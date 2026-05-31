@@ -10,13 +10,33 @@ public class Title implements Command {
 
     private static final List<String> INAPPROPRIATE_TITLES = Arrays.asList("nigger", "ass", "boobs");
 
+    // Rank/staff words are blocked to stop players impersonating staff via titles.
+    private static final List<String> IMPERSONATION_TERMS = Arrays.asList(
+            "owner", "admin", "administrator", "moderator", "developer",
+            "staff", "support", "helper", "official", "server");
+
     @Override
     public void execute(Player player, String command, String[] parts) {
-        if (INAPPROPRIATE_TITLES.stream().anyMatch(title -> parts[1].toLowerCase().contains(title))) {
+        if (parts.length < 2 || parts[1].trim().isEmpty()) {
+            player.getPacketSender().sendMessage("Usage: ::title <your title>");
+            return;
+        }
+        String requested = command.substring(command.indexOf(' ') + 1).trim();
+        String lower = requested.toLowerCase();
+
+        if (INAPPROPRIATE_TITLES.stream().anyMatch(lower::contains)) {
             player.getPacketSender().sendMessage("You're not allowed to have that in your title.");
             return;
         }
-        player.setLoyaltyTitle("@blu@" + parts[1]);
+        if (IMPERSONATION_TERMS.stream().anyMatch(lower::contains)) {
+            player.getPacketSender().sendMessage("Titles can't contain staff or rank words.");
+            return;
+        }
+        if (requested.length() > 16) {
+            player.getPacketSender().sendMessage("That title is too long (max 16 characters).");
+            return;
+        }
+        player.setLoyaltyTitle("@blu@" + requested);
     }
 
     @Override

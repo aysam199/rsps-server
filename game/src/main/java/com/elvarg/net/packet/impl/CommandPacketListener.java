@@ -29,8 +29,13 @@ public class CommandPacketListener implements PacketExecutor {
         if (c != null) {
 
             if (c.canUse(player)) {
-                c.execute(player, command, parts);
-            } else {
+                try {
+                    c.execute(player, command, parts);
+                } catch (Exception e) {
+                    // A malformed or buggy command must never disrupt packet handling.
+                    e.printStackTrace();
+                    player.getPacketSender().sendMessage("That command could not be completed.");
+                }
             }
 
         } else {

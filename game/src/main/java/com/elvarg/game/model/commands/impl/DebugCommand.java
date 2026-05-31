@@ -19,7 +19,9 @@ public class DebugCommand implements Command {
 
     @Override
     public boolean canUse(Player player) {
-        return true;
+        // Developer interface-debug tool - never expose to regular players.
+        PlayerRights rights = player.getRights();
+        return rights == PlayerRights.OWNER || rights == PlayerRights.DEVELOPER;
     }
 
 }
