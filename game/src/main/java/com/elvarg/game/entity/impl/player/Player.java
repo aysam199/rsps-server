@@ -233,13 +233,20 @@ public class Player extends Mobile {
 	private DonatorRights donatorRights = DonatorRights.NONE;
 	// Custom MOBA-style ability progression (cooldown/damage upgrades).
 	private com.elvarg.game.content.abilities.AbilityUpgrades abilityUpgrades = new com.elvarg.game.content.abilities.AbilityUpgrades();
+	// A ground-targeted ability (e.g. Dash) waiting for the player's next map
+	// click to choose its destination. Not persisted.
+	private com.elvarg.game.content.abilities.Ability pendingGroundAbility;
+	private long pendingGroundAbilityTime;
 	// Daily login reward tracking.
 	private long lastDailyReward;
 	private int dailyStreak;
-	// Voting reward tracking. Total verified votes (for stats / future vote shop).
+	// Voting reward tracking. Total verified votes (for stats / vote shop).
 	private int totalVotes;
-	// Coins awarded by an off-thread vote verification, consumed on the game thread.
-	private final java.util.concurrent.atomic.AtomicInteger pendingVoteRewards = new java.util.concurrent.atomic.AtomicInteger(0);
+	// Per-toplist last successful claim time (epoch ms), keyed by site name.
+	// Persisted so relogging can't be used to reset a site's vote cooldown.
+	private java.util.Map<String, Long> voteClaims = new java.util.HashMap<>();
+	// Toplists whose votes were confirmed off-thread, consumed on the game thread.
+	private final java.util.Queue<String> pendingVoteSites = new java.util.concurrent.ConcurrentLinkedQueue<>();
 	/**
 	 * The cached player update block for updating.
 	 */
@@ -398,7 +405,7 @@ public class Player extends Mobile {
 		getTimers().process();
 
 		// Grant any vote rewards confirmed by the background verification thread.
-		if (pendingVoteRewards.get() > 0) {
+		if (!pendingVoteSites.isEmpty()) {
 			com.elvarg.game.content.VoteHandler.grantPendingRewards(this);
 		}
 
@@ -700,22 +707,63 @@ public class Player extends Mobile {
 		getUpdateFlag().flag(Flag.APPEARANCE);
 
 		if (this.newPlayer) {
-			int presetIndex = Misc.randomInclusive(0, Presetables.GLOBAL_PRESETS.length-1);
-			Presetables.load(this, Presetables.GLOBAL_PRESETS[presetIndex]);
+			// Everyone starts identically: melee combat stats + Prayer at 99 so
+			// players can PvP immediately, while every non-combat skill stays at 1
+			// to grind. (Magic/Ranged are intentionally left at 1.)
+			for (Skill skill : Skill.values()) {
+				int level;
+				switch (skill) {
+					case ATTACK:
+					case STRENGTH:
+					case DEFENCE:
+					case PRAYER:
+					case HITPOINTS:
+						level = 99;
+						break;
+					default:
+						level = 1;
+						break;
+				}
+				skillManager.setCurrentLevel(skill, level, false)
+						.setMaxLevel(skill, level, false)
+						.setExperience(skill, SkillManager.getExperienceForLevel(level));
+				getPacketSender().sendSkill(skill);
+			}
+			getUpdateFlag().flag(Flag.APPEARANCE);
 
-			// New-player starter kit: a small amount of gold to get started (not
-			// enough to buy an ability outright - they still have to grind a bit),
-			// plus a welcome message pointing them at the custom ability content.
+			// A single fixed starter pack for every new player (mithril melee kit +
+			// food and prayer potions). Goes to the inventory, overflowing to the
+			// bank if needed. Players equip it themselves.
+			final Item[] starterPack = {
+					new Item(1159),     // Mithril full helm
+					new Item(1121),     // Mithril platebody
+					new Item(1071),     // Mithril platelegs
+					new Item(1197),     // Mithril kiteshield
+					new Item(1329),     // Mithril scimitar
+					new Item(1731),     // Amulet of power
+					new Item(379, 20),  // Lobster (food)
+					new Item(2434, 3),  // Prayer potion(4)
+			};
+			for (Item item : starterPack) {
+				if (getInventory().getFreeSlots() > 0) {
+					getInventory().add(item);
+				} else {
+					getBank(0).add(item);
+				}
+			}
+
+			// Starter gold to get going (not enough to buy an ability outright -
+			// they still have to grind a bit), plus the welcome walkthrough.
 			final int starterCoins = 50_000;
 			if (getInventory().getFreeSlots() > 0 || getInventory().contains(995)) {
 				getInventory().add(new Item(995, starterCoins));
 			} else {
 				getBank(0).add(new Item(995, starterCoins));
 			}
-			getPacketSender().sendMessage("Welcome! You've received "
-					+ Misc.insertCommasToNumber(Integer.toString(starterCoins)) + " starter coins.");
-			getPacketSender().sendMessage("Visit the Ability Master at home to buy and upgrade special abilities.");
-			getPacketSender().sendMessage("Earn more gold by killing monsters (PvM) and defeating players in the Wilderness (PvP).");
+			getPacketSender().sendMessage("Welcome! You've received a starter kit and "
+					+ Misc.insertCommasToNumber(Integer.toString(starterCoins)) + " coins.");
+			// Show the new-player walkthrough (chat lines now + welcome scroll shortly after).
+			com.elvarg.game.content.ServerGuide.welcomeOnLogin(this);
 		}
 
 		// Daily login reward (handles its own once-per-day eligibility + streak).
@@ -1540,15 +1588,43 @@ public class Player extends Mobile {
 	}
 
 	/**
-	 * Called from a background vote-verification thread to credit confirmed votes.
-	 * The reward is actually granted on the game thread in {@link #process()}.
+	 * Called from a background vote-verification thread when a vote on the given
+	 * toplist has been confirmed. The reward and per-site cooldown are applied on
+	 * the game thread in {@link #process()}.
 	 */
-	public void addPendingVoteRewards(int votes) {
-		pendingVoteRewards.addAndGet(votes);
+	public void addPendingVoteSite(String site) {
+		pendingVoteSites.add(site);
 	}
 
-	public java.util.concurrent.atomic.AtomicInteger getPendingVoteRewards() {
-		return pendingVoteRewards;
+	public java.util.Queue<String> getPendingVoteSites() {
+		return pendingVoteSites;
+	}
+
+	public java.util.Map<String, Long> getVoteClaims() {
+		if (voteClaims == null) {
+			voteClaims = new java.util.HashMap<>();
+		}
+		return voteClaims;
+	}
+
+	public void setVoteClaims(java.util.Map<String, Long> voteClaims) {
+		this.voteClaims = voteClaims;
+	}
+
+	public com.elvarg.game.content.abilities.Ability getPendingGroundAbility() {
+		return pendingGroundAbility;
+	}
+
+	public void setPendingGroundAbility(com.elvarg.game.content.abilities.Ability pendingGroundAbility) {
+		this.pendingGroundAbility = pendingGroundAbility;
+	}
+
+	public long getPendingGroundAbilityTime() {
+		return pendingGroundAbilityTime;
+	}
+
+	public void setPendingGroundAbilityTime(long pendingGroundAbilityTime) {
+		this.pendingGroundAbilityTime = pendingGroundAbilityTime;
 	}
 
 	public void setAbilityUpgrades(com.elvarg.game.content.abilities.AbilityUpgrades abilityUpgrades) {

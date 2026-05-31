@@ -58,15 +58,39 @@ public enum Ability {
     DASH(13237, "Dash", 6_000, 0, false) {
         @Override
         public void activate(Player caster, Mobile target) {
-            Mobile enemy = AbilityHandler.nearestEnemy(caster, 8);
-            Location towards = (enemy != null)
-                    ? enemy.getLocation()
-                    : caster.getLocation().transform(0, 4); // default: forwards (north)
-            Location dest = AbilityHandler.stepTowards(caster.getLocation(), towards, 4,
-                    enemy != null ? 1 : 0, caster.getPrivateArea());
+            // Dash is ground-targeted (see activateAt). This fallback only runs if
+            // it's ever cast without a tile click - dash straight ahead (north).
+            activateAt(caster, caster.getLocation().transform(0, DASH_TILES));
+        }
+
+        @Override
+        public boolean isGroundTargeted() {
+            return true;
+        }
+
+        @Override
+        public UpgradeType getSecondaryUpgrade() {
+            return UpgradeType.DISTANCE;
+        }
+
+        @Override
+        public boolean activateAt(Player caster, Location clicked) {
+            Location from = caster.getLocation();
+            int dx = Integer.signum(clicked.getX() - from.getX());
+            int dy = Integer.signum(clicked.getY() - from.getY());
+            if (dx == 0 && dy == 0) {
+                caster.getPacketSender().sendMessage("Click a tile away from yourself to dash.");
+                return false;
+            }
+            // Dash a fixed number of tiles in the clicked direction (plus any
+            // purchased Distance upgrades), stopping early only if blocked.
+            int tiles = DASH_TILES + AbilityHandler.bonusDistance(caster, this);
+            Location aim = from.transform(dx * tiles, dy * tiles);
+            Location dest = AbilityHandler.stepTowards(from, aim, tiles, 0, caster.getPrivateArea());
             AbilityHandler.gfx(caster, GFX_DASH, GraphicHeight.LOW);
             AbilityHandler.forceMove(caster, dest, 1, 0);
-            caster.getPacketSender().sendMessage("You dash forward!");
+            caster.getPacketSender().sendMessage("You dash!");
+            return true;
         }
     },
 
@@ -122,13 +146,19 @@ public enum Ability {
      */
     FROST_NOVA(4675, "Frost Nova", 15_000, 0, false) {
         @Override
+        public UpgradeType getSecondaryUpgrade() {
+            return UpgradeType.FREEZE;
+        }
+
+        @Override
         public void activate(Player caster, Mobile target) {
             caster.getPacketSender().sendMessage("You unleash a freezing nova!");
             AbilityHandler.anim(caster, 1979);
             AbilityHandler.tileGfx(GFX_FROST, caster.getLocation(), GraphicHeight.LOW);
+            int freeze = 8 + AbilityHandler.freezeBonus(caster, this);
             AbilityHandler.forEachEnemyNear(caster, caster.getLocation(), 2, 8, m -> {
                 AbilityHandler.gfx(m, GFX_FROST, GraphicHeight.HIGH);
-                CombatFactory.freeze(m, 8);
+                CombatFactory.freeze(m, freeze);
                 AbilityHandler.splat(caster, m, 2 + Misc.getRandom(6), this);
             });
         }
@@ -181,13 +211,19 @@ public enum Ability {
      */
     REJUVENATE(11806, "Rejuvenate", 20_000, 0, false) {
         @Override
+        public UpgradeType getSecondaryUpgrade() {
+            return UpgradeType.HEALING;
+        }
+
+        @Override
         public void activate(Player caster, Mobile target) {
             caster.getPacketSender().sendMessage("A soothing energy washes over you.");
             AbilityHandler.anim(caster, 1979);
+            int healPerTick = AbilityHandler.scaleHeal(caster, this, 6);
             for (int tick = 1; tick <= 4; tick++) {
                 AbilityHandler.delay(tick, () -> {
                     if (caster.getHitpoints() > 0) {
-                        caster.heal(6);
+                        caster.heal(healPerTick);
                         AbilityHandler.gfx(caster, GFX_REJUVENATE, GraphicHeight.LOW);
                     }
                 });
@@ -201,10 +237,16 @@ public enum Ability {
      */
     SMOKE_BOMB(11998, "Smoke Bomb", 14_000, 0, false) {
         @Override
+        public UpgradeType getSecondaryUpgrade() {
+            return UpgradeType.FREEZE;
+        }
+
+        @Override
         public void activate(Player caster, Mobile target) {
             caster.getPacketSender().sendMessage("You vanish in a cloud of smoke!");
             AbilityHandler.tileGfx(GFX_SMOKE, caster.getLocation(), GraphicHeight.LOW);
-            AbilityHandler.forEachEnemyNear(caster, caster.getLocation(), 1, 8, m -> CombatFactory.freeze(m, 4));
+            int freeze = 4 + AbilityHandler.freezeBonus(caster, this);
+            AbilityHandler.forEachEnemyNear(caster, caster.getLocation(), 1, 8, m -> CombatFactory.freeze(m, freeze));
 
             Mobile enemy = AbilityHandler.nearestEnemy(caster, 8);
             Location away;
@@ -273,16 +315,22 @@ public enum Ability {
      */
     ENTANGLE(21006, "Entangle", 9_000, 10, true) {
         @Override
+        public UpgradeType getSecondaryUpgrade() {
+            return UpgradeType.FREEZE;
+        }
+
+        @Override
         public void activate(Player caster, Mobile target) {
             caster.getPacketSender().sendMessage("Vines erupt around your target!");
             AbilityHandler.anim(caster, 1979);
             Projectile.sendProjectile(caster, target, new Projectile(PROJECTILE_ENTANGLE, 43, 31, 35, 10));
+            int freeze = 10 + AbilityHandler.freezeBonus(caster, this);
             AbilityHandler.delay(2, () -> {
                 if (!AbilityHandler.canHit(caster, target)) {
                     return;
                 }
                 AbilityHandler.gfx(target, GFX_ENTANGLE, GraphicHeight.LOW);
-                CombatFactory.freeze(target, 10);
+                CombatFactory.freeze(target, freeze);
                 AbilityHandler.damage(caster, target, 3 + Misc.getRandom(6), this);
                 if (target.isPlayer()) {
                     target.getAsPlayer().getPacketSender().sendMessage("You're held in place by vines!");
@@ -354,16 +402,22 @@ public enum Ability {
      */
     BULWARK(21015, "Bulwark", 18_000, 0, false) {
         @Override
+        public UpgradeType getSecondaryUpgrade() {
+            return UpgradeType.HEALING;
+        }
+
+        @Override
         public void activate(Player caster, Mobile target) {
             caster.getPacketSender().sendMessage("You raise an unbreakable bulwark!");
             AbilityHandler.anim(caster, 4177);
             AbilityHandler.gfx(caster, GFX_REJUVENATE, GraphicHeight.HIGH);
             AbilityHandler.cleanse(caster);
-            caster.heal(15);
+            caster.heal(AbilityHandler.scaleHeal(caster, this, 15));
+            int healPerTick = AbilityHandler.scaleHeal(caster, this, 5);
             for (int tick = 2; tick <= 4; tick += 2) {
                 AbilityHandler.delay(tick, () -> {
                     if (caster.getHitpoints() > 0) {
-                        caster.heal(5);
+                        caster.heal(healPerTick);
                         AbilityHandler.gfx(caster, GFX_REJUVENATE, GraphicHeight.LOW);
                     }
                 });
@@ -379,6 +433,9 @@ public enum Ability {
     private static final int PROJECTILE_METEOR = 368;   // ice-barrage style bolt
     private static final int PROJECTILE_SOUL = 376;     // soul-drain bolt
     private static final int PROJECTILE_ENTANGLE = 178; // entangle bolt
+
+    /** Number of tiles the Dash ability travels. */
+    private static final int DASH_TILES = 4;
 
     private static final int GFX_DASH = 268;
     private static final int GFX_EARTHQUAKE = 369;
@@ -415,6 +472,24 @@ public enum Ability {
      */
     public abstract void activate(Player caster, Mobile target);
 
+    /**
+     * Whether this ability waits for the player to click a destination tile
+     * after activation (e.g. Dash) instead of firing immediately.
+     */
+    public boolean isGroundTargeted() {
+        return false;
+    }
+
+    /**
+     * Performs a ground-targeted ability at the clicked {@code target} tile.
+     *
+     * @return {@code true} if the ability fired (so its cooldown should start),
+     *         or {@code false} to ask the player to click a different tile.
+     */
+    public boolean activateAt(Player caster, Location target) {
+        return false;
+    }
+
     public int getItemId() {
         return itemId;
     }
@@ -449,6 +524,20 @@ public enum Ability {
     /** Maximum number of damage levels (each +4% => +20% total). */
     public static final int MAX_DAMAGE_LEVEL = 5;
 
+    /**
+     * The ability's secondary upgrade track (every ability also has Cooldown).
+     * Defaults to {@link UpgradeType#DAMAGE}; abilities that deal no damage
+     * override this with a track that fits them (distance, healing, freeze).
+     */
+    public UpgradeType getSecondaryUpgrade() {
+        return UpgradeType.DAMAGE;
+    }
+
+    /** Highest secondary-track level a player may buy for this ability. */
+    public int getMaxSecondaryLevel() {
+        return getSecondaryUpgrade().getMaxLevel();
+    }
+
     /** Highest cooldown level a player may buy for this ability. */
     public int getMaxCooldownLevel() {
         return (int) (cooldownMs * MAX_COOLDOWN_REDUCTION / COOLDOWN_STEP_MS);
@@ -460,9 +549,45 @@ public enum Ability {
         return cooldownMs - (long) COOLDOWN_STEP_MS * level;
     }
 
-    /** Price (in coins) to buy this ability from the Ability Emporium. */
+    /**
+     * Price (in coins) to buy one pack of charges of this ability from the
+     * Ability Emporium (see {@link AbilityHandler#CHARGES_PER_PURCHASE}).
+     * Abilities are consumable, so this is a recurring cost - priced as a gold
+     * sink that scales with the ability's cooldown/power.
+     */
     public long getBuyCost() {
-        return 100_000L + cooldownMs * 25L;
+        return 50_000L + cooldownMs * 15L;
+    }
+
+    // ------------------------------------------------------------------
+    // Descriptions (shown on examine, in shops and inventory)
+    // ------------------------------------------------------------------
+    private static final Map<Integer, String> DESCRIPTIONS = new HashMap<>() {{
+        put(12006, "Hook: fire a projectile that drags an enemy to your feet, stunning and damaging them.");
+        put(13237, "Dash: activate, then click a tile to dash 4 tiles in that direction (upgradeable distance).");
+        put(13576, "Earthquake Stomp: slam the ground, damaging and stunning every enemy around you.");
+        put(11907, "Chain Lightning: strike a target and arc to up to 2 more nearby enemies.");
+        put(4675, "Frost Nova: freeze and lightly damage all enemies around you (upgradeable freeze).");
+        put(20714, "Meteor Strike: call down a delayed meteor on a target's area for heavy damage.");
+        put(13652, "Heroic Leap: leap to a foe, dealing area damage and a brief stun on landing.");
+        put(11806, "Rejuvenate: heal yourself steadily over a few seconds (upgradeable healing).");
+        put(11998, "Smoke Bomb: freeze nearby enemies and blink yourself to safety (upgradeable freeze).");
+        put(11802, "Execute: a finisher whose damage scales with the target's missing health.");
+        put(22323, "Soul Drain: damage a foe at range and heal yourself for half the damage dealt.");
+        put(21006, "Entangle: root a single target in place with a freeze and light damage (upgradeable freeze).");
+        put(23987, "Whirlwind: spin and strike everything around you twice.");
+        put(12904, "Gravity Well: drag in every nearby enemy and stun them.");
+        put(13899, "Blink Strike: blink to a target, striking and briefly stunning them.");
+        put(21015, "Bulwark: cleanse freezes/stuns on yourself and recover a burst of health (upgradeable healing).");
+    }};
+
+    /**
+     * A player-facing description of what this ability does, including its
+     * base cooldown. Shown when the ability item is examined.
+     */
+    public String getDescription() {
+        String base = DESCRIPTIONS.getOrDefault(itemId, displayName + ": a custom ability.");
+        return base + " (" + (cooldownMs / 1000) + "s cooldown)";
     }
 
     // ------------------------------------------------------------------

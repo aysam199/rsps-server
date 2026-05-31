@@ -40,6 +40,9 @@ public class AbilityMaster extends NPC implements NPCInteraction {
 
     static {
         ShopManager.shops.put(ABILITY_SHOP.getId(), ABILITY_SHOP);
+        // Ensure the Vote Shop is registered too (the Ability Master is the hub
+        // for spending vote tickets on abilities / upgrades).
+        com.elvarg.game.content.VoteShop.init();
     }
 
     private DialogueChainBuilder dialogueBuilder;
@@ -84,21 +87,31 @@ public class AbilityMaster extends NPC implements NPCInteraction {
                 new NpcDialogue(0, NpcIdentifiers.WISE_OLD_MAN,
                         "Greetings, warrior. I deal in the arts of combat abilities."),
                 new OptionsDialogue(1, new LinkedHashMap<>() {{
-                    put("Buy ability items.", (player) -> ShopManager.open(player, ShopIdentifiers.ABILITY_SHOP));
+                    put("Buy ability items.", (player) -> {
+                        player.getPacketSender().sendMessage("Abilities are consumable: each buy grants @blu@"
+                                + com.elvarg.game.content.abilities.AbilityHandler.CHARGES_PER_PURCHASE
+                                + "@bla@ charges (casts).");
+                        player.getPacketSender().sendMessage("Upgrades you buy are kept forever.");
+                        ShopManager.open(player, ShopIdentifiers.ABILITY_SHOP);
+                    });
+                    put("Spend vote tickets (Vote Shop).", (player) -> com.elvarg.game.content.VoteShop.open(player));
+                    put("Exchange vote tickets for coins.", (player) -> player.getDialogueManager().start(
+                            new com.elvarg.game.model.dialogues.builders.impl.VoteCoinExchangeDialogue()));
                     put("How do I upgrade my abilities?", (player) -> player.getDialogueManager().start(dialogueBuilder, 2));
-                    put("Tell me about donating.", (player) -> player.getDialogueManager().start(dialogueBuilder, 4));
+                    put("Tell me about donating.", (player) -> com.elvarg.game.content.Donation.showInfo(player));
                 }}),
 
                 new NpcDialogue(2, NpcIdentifiers.WISE_OLD_MAN,
-                        "Bring me coins and an ability item - simply USE the item on me. "
-                                + "You can shorten its cooldown (up to -20%) or sharpen its "
-                                + "damage (up to +20%).",
+                        "USE an ability item on me to upgrade it. Every ability can shorten "
+                                + "its cooldown, plus improve a second trait that suits it - "
+                                + "damage, healing, dash distance or freeze - paid with coins "
+                                + "or vote tickets.",
                         (player) -> player.getDialogueManager().start(this.dialogueBuilder, 1)),
 
                 new NpcDialogue(4, NpcIdentifiers.WISE_OLD_MAN,
                         "Supporters of the realm receive a discount on all ability "
-                                + "upgrades - never raw power, just a kinder price. Speak to "
-                                + "the staff to learn more.",
+                                + "upgrades - never raw power, just a kinder price. Type "
+                                + "::donate to see the tiers and how to support us.",
                         (player) -> player.getDialogueManager().start(this.dialogueBuilder, 1)),
 
                 new EndDialogue(3)

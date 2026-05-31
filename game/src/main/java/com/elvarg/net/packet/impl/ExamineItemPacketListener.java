@@ -34,6 +34,17 @@ public class ExamineItemPacketListener implements PacketExecutor {
 			return;
 		}
 
+		// Custom ability items describe what they do instead of a generic examine.
+		com.elvarg.game.content.abilities.Ability ability =
+				com.elvarg.game.content.abilities.Ability.forItem(itemId);
+		if (ability != null) {
+			player.getPacketSender().sendMessage("@blu@" + ability.getDescription());
+			player.getPacketSender().sendMessage("Charges left: @red@"
+					+ player.getAbilityUpgrades().getCharges(itemId)
+					+ "@bla@ - buy more from the Ability Master.");
+			return;
+		}
+
 		ItemDefinition itemDef = ItemDefinition.forId(itemId);
 		if (itemDef != null) {
 			player.getPacketSender().sendMessage(itemDef.getExamine());

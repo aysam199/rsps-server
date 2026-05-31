@@ -25,6 +25,8 @@ public class AbilityKit implements Command {
     public void execute(Player player, String command, String[] parts) {
         for (Ability ability : Ability.values()) {
             player.getInventory().add(ability.getItemId(), 1);
+            // Hand out a big stack of charges so testing isn't interrupted by rebuys.
+            player.getAbilityUpgrades().setCharges(ability.getItemId(), 100_000);
         }
 
         // Spawn a few dummies around the player to test on.

@@ -25,7 +25,7 @@ public class GameConstants {
 	/**
 	 * The name of the game.
 	 */
-	public static final String NAME = "RspsApp";
+	public static final String NAME = "LeagueScape";
 
 	/**
 	 * The secure game UID /Unique Identifier/
@@ -72,7 +72,7 @@ public class GameConstants {
 	 * The default position, where players will spawn upon logging in for the first
 	 * time.
 	 */
-	public static final Location DEFAULT_LOCATION = new Location(3089, 3524);
+	public static final Location DEFAULT_LOCATION = new Location(3087, 3503);
 
 	/**
 	 * Usernames that are automatically granted Owner rank on login. Add more

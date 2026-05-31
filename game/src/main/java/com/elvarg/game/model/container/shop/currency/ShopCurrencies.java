@@ -4,12 +4,14 @@ import com.elvarg.game.model.container.shop.currency.impl.BloodMoneyCurrency;
 import com.elvarg.game.model.container.shop.currency.impl.CastleWarsTicketCurrency;
 import com.elvarg.game.model.container.shop.currency.impl.CoinsCurrency;
 import com.elvarg.game.model.container.shop.currency.impl.PointsCurrency;
+import com.elvarg.game.model.container.shop.currency.impl.VoteTicketCurrency;
 
 public enum ShopCurrencies {
     COINS(new CoinsCurrency()),
     BLOOD_MONEY(new BloodMoneyCurrency()),
     CASTLE_WARS_TICKET(new CastleWarsTicketCurrency()),
-    POINTS(new PointsCurrency())
+    POINTS(new PointsCurrency()),
+    VOTE_TICKET(new VoteTicketCurrency())
     ;
 
     private final ShopCurrency currency;

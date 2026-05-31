@@ -7,7 +7,7 @@ public class Store implements Command {
 
     @Override
     public void execute(Player player, String command, String[] parts) {
-        player.getPacketSender().sendURL("http://www.deadlypkers.net");
+        com.elvarg.game.content.Donation.showInfo(player);
     }
 
     @Override

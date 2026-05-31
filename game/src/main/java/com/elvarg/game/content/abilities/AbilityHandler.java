@@ -89,6 +89,30 @@ public final class AbilityHandler {
             return true;
         }
 
+        // Charge check - abilities are consumable.
+        if (!hasCharges(caster, ability)) {
+            caster.getPacketSender().sendMessage("@red@You're out of " + ability.getDisplayName()
+                    + " charges. Buy more from the Ability Master.");
+            caster.getInventory().delete(ability.getItemId(), 1);
+            return true;
+        }
+
+        // Ground-targeted abilities (e.g. Dash) don't fire immediately - they
+        // arm and wait for the player to click a destination tile, resolved in
+        // the movement packet via handleGroundTarget(). No cooldown is spent yet.
+        if (ability.isGroundTargeted()) {
+            if (ability == caster.getPendingGroundAbility()) {
+                caster.setPendingGroundAbility(null);
+                caster.getPacketSender().sendMessage(ability.getDisplayName() + " aiming cancelled.");
+                return true;
+            }
+            caster.setPendingGroundAbility(ability);
+            caster.setPendingGroundAbilityTime(System.currentTimeMillis());
+            caster.getPacketSender().sendMessage("@blu@" + ability.getDisplayName()
+                    + ": click a tile to dash toward it.");
+            return true;
+        }
+
         if (ability.targetsEnemy()) {
             if (target == null || target == caster) {
                 caster.getPacketSender().sendMessage("You need to use the " + ability.getDisplayName()
@@ -116,10 +140,11 @@ public final class AbilityHandler {
         long cooldownMs = ability.effectiveCooldownMs(caster);
         ability.activate(caster, target);
         setCooldown(caster, ability, cooldownMs);
+        int chargesLeft = consumeCharge(caster, ability);
         int cooldownSeconds = (int) (cooldownMs / 1000);
         caster.getPacketSender().sendAbilityCooldown(item.getId(), cooldownSeconds);
-        caster.getPacketSender().sendMessage("@blu@" + ability.getDisplayName() + " cast! Ready again in "
-                + cooldownSeconds + " seconds.");
+        caster.getPacketSender().sendMessage("@blu@" + ability.getDisplayName() + " cast! Ready in "
+                + cooldownSeconds + "s. Charges left: " + chargesLeft + ".");
         return true;
     }
 
@@ -141,6 +166,58 @@ public final class AbilityHandler {
     }
 
     // ------------------------------------------------------------------
+    // Ground-targeted abilities (e.g. Dash)
+    // ------------------------------------------------------------------
+
+    /** How long an armed ground-targeted ability waits for the player's tile click. */
+    private static final long GROUND_TARGET_EXPIRY_MS = 15_000;
+
+    /**
+     * Resolves a pending ground-targeted ability (e.g. Dash) against the tile
+     * the player just clicked. Called from the movement packet listener before
+     * normal walking is processed.
+     *
+     * @return {@code true} if the click was consumed by an ability (so the
+     *         player should not walk to it).
+     */
+    public static boolean handleGroundTarget(Player player, Location clicked) {
+        Ability pending = player.getPendingGroundAbility();
+        if (pending == null) {
+            return false;
+        }
+
+        // Drop stale aim requests so a much later click doesn't trigger a
+        // surprise dash; let the player walk normally instead.
+        if (System.currentTimeMillis() - player.getPendingGroundAbilityTime() > GROUND_TARGET_EXPIRY_MS) {
+            player.setPendingGroundAbility(null);
+            return false;
+        }
+
+        player.setPendingGroundAbility(null);
+
+        if (player.getHitpoints() <= 0 || player.isTeleporting()) {
+            return true;
+        }
+
+        long cooldownMs = pending.effectiveCooldownMs(player);
+        if (!pending.activateAt(player, clicked)) {
+            // Couldn't fire (e.g. they clicked their own tile) - re-arm so they
+            // can click a valid destination without re-activating the item.
+            player.setPendingGroundAbility(pending);
+            player.setPendingGroundAbilityTime(System.currentTimeMillis());
+            return true;
+        }
+
+        setCooldown(player, pending, cooldownMs);
+        int chargesLeft = consumeCharge(player, pending);
+        int cooldownSeconds = (int) (cooldownMs / 1000);
+        player.getPacketSender().sendAbilityCooldown(pending.getItemId(), cooldownSeconds);
+        player.getPacketSender().sendMessage("@blu@" + pending.getDisplayName() + " cast! Ready in "
+                + cooldownSeconds + "s. Charges left: " + chargesLeft + ".");
+        return true;
+    }
+
+    // ------------------------------------------------------------------
     // Upgrade shop: pricing, donator discount and purchase logic
     // ------------------------------------------------------------------
 
@@ -149,10 +226,16 @@ public final class AbilityHandler {
         return 50_000L * (currentLevel + 1);
     }
 
-    /** Cost (in coins) of the player's next damage level. */
-    public static long damageUpgradeCost(int currentLevel) {
+    /** Cost (in coins) of the player's next secondary-track level. */
+    public static long secondaryUpgradeCost(int currentLevel) {
         return 100_000L * (currentLevel + 1);
     }
+
+    /** Ticket cost of a cooldown-reduction level when paying with Vote tickets. */
+    public static final int COOLDOWN_TICKET_COST = 3;
+
+    /** Ticket cost of a secondary-track level when paying with Vote tickets. */
+    public static final int SECONDARY_TICKET_COST = 4;
 
     /**
      * Applies the donator discount to an upgrade cost. Donators reach the same
@@ -182,6 +265,68 @@ public final class AbilityHandler {
         return true;
     }
 
+    // ------------------------------------------------------------------
+    // Consumable charges (abilities must be rebought when depleted)
+    // ------------------------------------------------------------------
+
+    /** Number of casts granted per ability purchase. */
+    public static final int CHARGES_PER_PURCHASE = 40;
+
+    /** Whether the player has at least one charge left for {@code ability}. */
+    public static boolean hasCharges(Player player, Ability ability) {
+        return player.getAbilityUpgrades().getCharges(ability.getItemId()) > 0;
+    }
+
+    /**
+     * Spends one charge of {@code ability}. When the last charge is used the
+     * ability item is removed from the inventory so the player must rebuy it
+     * (their purchased upgrades are kept).
+     *
+     * @return the charges remaining after this cast.
+     */
+    private static int consumeCharge(Player player, Ability ability) {
+        int left = player.getAbilityUpgrades().getCharges(ability.getItemId()) - 1;
+        player.getAbilityUpgrades().setCharges(ability.getItemId(), left);
+        if (left <= 0) {
+            player.getInventory().delete(ability.getItemId(), 1);
+            player.getPacketSender().sendMessage("@red@Your " + ability.getDisplayName()
+                    + " has run out of charges - buy more from the Ability Master.");
+        }
+        return Math.max(0, left);
+    }
+
+    /**
+     * Buys one pack of {@link #CHARGES_PER_PURCHASE} charges of {@code ability}
+     * with coins (donator discount applied). Adds the ability item if the player
+     * doesn't already hold one; otherwise just tops up the charges.
+     */
+    public static void purchaseAbility(Player player, Ability ability) {
+        long cost = withDonatorDiscount(player, ability.getBuyCost());
+        int coins = player.getInventory().getAmount(com.elvarg.util.ItemIdentifiers.COINS);
+        boolean needsItem = !player.getInventory().contains(ability.getItemId());
+
+        if (needsItem && player.getInventory().getFreeSlots() <= 0) {
+            player.getPacketSender().sendMessage("You need a free inventory slot to buy a new ability.");
+            return;
+        }
+        if (cost > Integer.MAX_VALUE || coins < cost) {
+            player.getPacketSender().sendMessage("You need @red@"
+                    + com.elvarg.util.Misc.insertCommasToNumber(Long.toString(cost)) + "@bla@ coins to buy "
+                    + CHARGES_PER_PURCHASE + " charges of " + ability.getDisplayName() + ".");
+            return;
+        }
+
+        player.getInventory().delete(com.elvarg.util.ItemIdentifiers.COINS, (int) cost);
+        if (needsItem) {
+            player.getInventory().add(ability.getItemId(), 1);
+        }
+        int newCharges = player.getAbilityUpgrades().getCharges(ability.getItemId()) + CHARGES_PER_PURCHASE;
+        player.getAbilityUpgrades().setCharges(ability.getItemId(), newCharges);
+        player.getPacketSender().sendMessage("@gre@Bought " + CHARGES_PER_PURCHASE + " charges of "
+                + ability.getDisplayName() + " for " + com.elvarg.util.Misc.insertCommasToNumber(Long.toString(cost))
+                + " coins. Total charges: " + newCharges + ".");
+    }
+
     /** Attempts to purchase one cooldown-reduction level for {@code ability}. */
     public static void buyCooldownUpgrade(Player player, Ability ability) {
         int level = player.getAbilityUpgrades().getCooldownLevel(ability.getItemId());
@@ -200,21 +345,81 @@ public final class AbilityHandler {
                 + " cooldown upgraded! Now " + String.format("%.2f", newCd / 1000.0) + "s.");
     }
 
-    /** Attempts to purchase one damage level for {@code ability}. */
-    public static void buyDamageUpgrade(Player player, Ability ability) {
-        int level = player.getAbilityUpgrades().getDamageLevel(ability.getItemId());
-        if (level >= Ability.MAX_DAMAGE_LEVEL) {
-            player.getPacketSender().sendMessage(ability.getDisplayName()
-                    + "'s damage is already at the maximum (+20%).");
+    /** Attempts to purchase one secondary-track level for {@code ability} with coins. */
+    public static void buySecondaryUpgrade(Player player, Ability ability) {
+        UpgradeType type = ability.getSecondaryUpgrade();
+        int level = player.getAbilityUpgrades().getSecondaryLevel(ability.getItemId());
+        if (level >= ability.getMaxSecondaryLevel()) {
+            player.getPacketSender().sendMessage(ability.getDisplayName() + "'s "
+                    + type.getDisplayName().toLowerCase() + " is already maxed (" + type.getMaxLabel() + ").");
             return;
         }
-        long cost = withDonatorDiscount(player, damageUpgradeCost(level));
+        long cost = withDonatorDiscount(player, secondaryUpgradeCost(level));
         if (!spendCoins(player, cost)) {
             return;
         }
-        player.getAbilityUpgrades().setDamageLevel(ability.getItemId(), level + 1);
+        player.getAbilityUpgrades().setSecondaryLevel(ability.getItemId(), level + 1);
+        announceSecondary(player, ability, level + 1, false);
+    }
+
+    private static boolean spendTickets(Player player, int cost) {
+        int tickets = player.getInventory().getAmount(com.elvarg.util.ItemIdentifiers.VOTE_TICKET);
+        if (tickets < cost) {
+            player.getPacketSender().sendMessage("You need @red@" + cost
+                    + "@bla@ Vote ticket(s) for that upgrade. Vote with ::vote to earn more.");
+            return false;
+        }
+        player.getInventory().delete(com.elvarg.util.ItemIdentifiers.VOTE_TICKET, cost);
+        return true;
+    }
+
+    /** Attempts to purchase one cooldown-reduction level using Vote tickets. */
+    public static void buyCooldownUpgradeWithTickets(Player player, Ability ability) {
+        int level = player.getAbilityUpgrades().getCooldownLevel(ability.getItemId());
+        if (level >= ability.getMaxCooldownLevel()) {
+            player.getPacketSender().sendMessage(ability.getDisplayName()
+                    + "'s cooldown is already at the minimum (-20%).");
+            return;
+        }
+        if (!spendTickets(player, COOLDOWN_TICKET_COST)) {
+            return;
+        }
+        player.getAbilityUpgrades().setCooldownLevel(ability.getItemId(), level + 1);
+        long newCd = ability.effectiveCooldownMs(player);
         player.getPacketSender().sendMessage("@blu@" + ability.getDisplayName()
-                + " damage upgraded! Now +" + ((level + 1) * 4) + "%.");
+                + " cooldown upgraded with tickets! Now " + String.format("%.2f", newCd / 1000.0) + "s.");
+    }
+
+    /** Attempts to purchase one secondary-track level using Vote tickets. */
+    public static void buySecondaryUpgradeWithTickets(Player player, Ability ability) {
+        UpgradeType type = ability.getSecondaryUpgrade();
+        int level = player.getAbilityUpgrades().getSecondaryLevel(ability.getItemId());
+        if (level >= ability.getMaxSecondaryLevel()) {
+            player.getPacketSender().sendMessage(ability.getDisplayName() + "'s "
+                    + type.getDisplayName().toLowerCase() + " is already maxed (" + type.getMaxLabel() + ").");
+            return;
+        }
+        if (!spendTickets(player, SECONDARY_TICKET_COST)) {
+            return;
+        }
+        player.getAbilityUpgrades().setSecondaryLevel(ability.getItemId(), level + 1);
+        announceSecondary(player, ability, level + 1, true);
+    }
+
+    /** Sends the "upgraded!" confirmation describing the new secondary effect. */
+    private static void announceSecondary(Player player, Ability ability, int newLevel, boolean tickets) {
+        UpgradeType type = ability.getSecondaryUpgrade();
+        String effect;
+        switch (type) {
+            case DAMAGE:   effect = "+" + (newLevel * 4) + "% damage"; break;
+            case HEALING:  effect = "+" + (newLevel * 4) + "% healing"; break;
+            case DISTANCE: effect = "+" + newLevel + " tile" + (newLevel == 1 ? "" : "s") + " distance"; break;
+            case FREEZE:   effect = "+" + newLevel + " tick" + (newLevel == 1 ? "" : "s") + " freeze"; break;
+            default:       effect = "upgraded"; break;
+        }
+        player.getPacketSender().sendMessage("@blu@" + ability.getDisplayName() + " "
+                + type.getDisplayName().toLowerCase() + " upgraded" + (tickets ? " with tickets" : "")
+                + "! Now " + effect + ".");
     }
 
     /**
@@ -222,15 +427,58 @@ public final class AbilityHandler {
      * given ability.
      */
     public static int scaleDamage(Player caster, Ability ability, int base) {
-        if (caster == null || ability == null) {
+        if (caster == null || ability == null || ability.getSecondaryUpgrade() != UpgradeType.DAMAGE) {
             return base;
         }
-        int level = Math.min(caster.getAbilityUpgrades().getDamageLevel(ability.getItemId()),
-                Ability.MAX_DAMAGE_LEVEL);
+        int level = secondaryLevel(caster, ability);
         if (level <= 0) {
             return base;
         }
         return (int) Math.round(base * (1.0 + 0.04 * level));
+    }
+
+    /**
+     * Scales a heal value by the caster's purchased Healing level for
+     * {@code ability} (only applies to abilities whose secondary track is
+     * {@link UpgradeType#HEALING}).
+     */
+    public static int scaleHeal(Player caster, Ability ability, int base) {
+        if (caster == null || ability == null || ability.getSecondaryUpgrade() != UpgradeType.HEALING) {
+            return base;
+        }
+        int level = secondaryLevel(caster, ability);
+        if (level <= 0) {
+            return base;
+        }
+        return (int) Math.round(base * (1.0 + 0.04 * level));
+    }
+
+    /**
+     * Extra freeze/root ticks from the caster's purchased Freeze upgrades (only
+     * for abilities whose secondary track is {@link UpgradeType#FREEZE}).
+     */
+    public static int freezeBonus(Player caster, Ability ability) {
+        if (caster == null || ability == null || ability.getSecondaryUpgrade() != UpgradeType.FREEZE) {
+            return 0;
+        }
+        return secondaryLevel(caster, ability);
+    }
+
+    /**
+     * Extra tiles of travel from the caster's purchased Distance upgrades (only
+     * for abilities whose secondary track is {@link UpgradeType#DISTANCE}).
+     */
+    public static int bonusDistance(Player caster, Ability ability) {
+        if (caster == null || ability == null || ability.getSecondaryUpgrade() != UpgradeType.DISTANCE) {
+            return 0;
+        }
+        return secondaryLevel(caster, ability);
+    }
+
+    /** The caster's purchased secondary-track level, clamped to the ability's max. */
+    private static int secondaryLevel(Player caster, Ability ability) {
+        return Math.min(caster.getAbilityUpgrades().getSecondaryLevel(ability.getItemId()),
+                ability.getMaxSecondaryLevel());
     }
 
     // ------------------------------------------------------------------

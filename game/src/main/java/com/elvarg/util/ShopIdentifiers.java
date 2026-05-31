@@ -18,4 +18,5 @@ public class ShopIdentifiers {
     public static final int VOID_RANGED_SHOP = 12;
 
     public static final int ABILITY_SHOP = 13;
+    public static final int VOTE_SHOP = 14;
 }

@@ -2,6 +2,7 @@ package com.elvarg.game.model.dialogues.builders.impl;
 
 import com.elvarg.game.content.abilities.Ability;
 import com.elvarg.game.content.abilities.AbilityHandler;
+import com.elvarg.game.content.abilities.UpgradeType;
 import com.elvarg.game.entity.impl.player.Player;
 import com.elvarg.game.model.dialogues.builders.DynamicDialogueBuilder;
 import com.elvarg.game.model.dialogues.entries.impl.OptionDialogue;
@@ -28,39 +29,52 @@ public class AbilityUpgradeDialogue extends DynamicDialogueBuilder {
     @Override
     public void build(Player player) {
         int cdLevel = player.getAbilityUpgrades().getCooldownLevel(ability.getItemId());
-        int dmgLevel = player.getAbilityUpgrades().getDamageLevel(ability.getItemId());
-        int maxCd = ability.getMaxCooldownLevel();
+        int secLevel = player.getAbilityUpgrades().getSecondaryLevel(ability.getItemId());
+        boolean cdMaxed = cdLevel >= ability.getMaxCooldownLevel();
+        boolean secMaxed = secLevel >= ability.getMaxSecondaryLevel();
+        UpgradeType type = ability.getSecondaryUpgrade();
 
-        String cooldownOption;
-        if (cdLevel >= maxCd) {
-            cooldownOption = "Cooldown: MAXED (-20%)";
+        String cooldownGold;
+        if (cdMaxed) {
+            cooldownGold = "Cooldown: MAXED (-20%)";
         } else {
             long cost = AbilityHandler.withDonatorDiscount(player, AbilityHandler.cooldownUpgradeCost(cdLevel));
-            cooldownOption = "Cooldown -0.25s (" + Misc.insertCommasToNumber(Long.toString(cost)) + " gp)";
+            cooldownGold = "Cooldown -0.25s (" + Misc.insertCommasToNumber(Long.toString(cost)) + " gp)";
         }
 
-        String damageOption;
-        if (dmgLevel >= Ability.MAX_DAMAGE_LEVEL) {
-            damageOption = "Damage: MAXED (+20%)";
+        String secondaryGold;
+        if (secMaxed) {
+            secondaryGold = type.getDisplayName() + ": MAXED (" + type.getMaxLabel() + ")";
         } else {
-            long cost = AbilityHandler.withDonatorDiscount(player, AbilityHandler.damageUpgradeCost(dmgLevel));
-            damageOption = "Damage +4% (" + Misc.insertCommasToNumber(Long.toString(cost)) + " gp)";
+            long cost = AbilityHandler.withDonatorDiscount(player, AbilityHandler.secondaryUpgradeCost(secLevel));
+            secondaryGold = type.getDisplayName() + " " + type.getStepLabel()
+                    + " (" + Misc.insertCommasToNumber(Long.toString(cost)) + " gp)";
         }
+
+        String cooldownTickets = cdMaxed ? "Cooldown: MAXED (tickets)"
+                : "Cooldown -0.25s (" + AbilityHandler.COOLDOWN_TICKET_COST + " vote tickets)";
+        String secondaryTickets = secMaxed ? (type.getDisplayName() + ": MAXED (tickets)")
+                : type.getDisplayName() + " " + type.getStepLabel()
+                        + " (" + AbilityHandler.SECONDARY_TICKET_COST + " vote tickets)";
 
         add(new OptionDialogue(0, "Upgrade " + ability.getDisplayName(), (option) -> {
             switch (option) {
                 case FIRST_OPTION:
                     AbilityHandler.buyCooldownUpgrade(player, ability);
-                    player.getPacketSender().sendInterfaceRemoval();
                     break;
                 case SECOND_OPTION:
-                    AbilityHandler.buyDamageUpgrade(player, ability);
-                    player.getPacketSender().sendInterfaceRemoval();
+                    AbilityHandler.buySecondaryUpgrade(player, ability);
+                    break;
+                case THIRD_OPTION:
+                    AbilityHandler.buyCooldownUpgradeWithTickets(player, ability);
+                    break;
+                case FOURTH_OPTION:
+                    AbilityHandler.buySecondaryUpgradeWithTickets(player, ability);
                     break;
                 default:
-                    player.getPacketSender().sendInterfaceRemoval();
                     break;
             }
-        }, cooldownOption, damageOption, "Cancel"));
+            player.getPacketSender().sendInterfaceRemoval();
+        }, cooldownGold, secondaryGold, cooldownTickets, secondaryTickets, "Cancel"));
     }
 }

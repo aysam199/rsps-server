@@ -78,6 +78,7 @@ public class PlayerSave {
     private long lastDailyReward;
     private int dailyStreak;
     private int totalVotes;
+    private Map<String, Long> voteClaims;
 
     public String getPasswordHashWithSalt() {
         return passwordHashWithSalt;
@@ -597,6 +598,9 @@ public class PlayerSave {
         player.setLastDailyReward(this.lastDailyReward);
         player.setDailyStreak(this.dailyStreak);
         player.setTotalVotes(this.totalVotes);
+        if (this.voteClaims != null) {
+            player.setVoteClaims(this.voteClaims);
+        }
 
         if (this.presets != null) {
             player.setPresets(this.presets);
@@ -688,6 +692,7 @@ public class PlayerSave {
         playerSave.lastDailyReward = player.getLastDailyReward();
         playerSave.dailyStreak = player.getDailyStreak();
         playerSave.totalVotes = player.getTotalVotes();
+        playerSave.voteClaims = player.getVoteClaims();
 
         playerSave.friends = player.getRelations().getFriendList();
         playerSave.ignores = player.getRelations().getIgnoreList();

@@ -3003,6 +3003,8 @@ public class ItemIdentifiers {
     public static final int CHOMPY_BIRD_HAT_17 = 2994;
     public static final int CHOMPY_BIRD_HAT_18 = 2995;
     public static final int AGILITY_ARENA_TICKET = 2996;
+    /** Repurposed as the "Vote ticket" - the currency earned by voting. */
+    public static final int VOTE_TICKET = 2996;
     public static final int PIRATES_HOOK = 2997;
     public static final int TOADFLAX = 2998;
     public static final int TOADFLAX_2 = 2999;

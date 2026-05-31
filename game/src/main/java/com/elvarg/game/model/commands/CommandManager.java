@@ -34,6 +34,8 @@ public class CommandManager {
         put(new Store(), "store", "donate");
         put(new MaxHit(), "maxhit", "mh");
         put(new Vote(), "vote");
+        put(new VoteShopCommand(), "voteshop", "votestore");
+        put(new Guide(), "guide", "help", "info");
 
         /**
          * Donators Command
@@ -114,8 +116,6 @@ public class CommandManager {
         put(new CWarInterfaceCommand(), "cwar");
         put(new ListSizesCommand(), "listsizes");
         put(new AttackRange(), "atkrange", "attackrange");
-        put(new Donator(), "donator");
-        put(new GiveDonator(), "givedonator");
 
         /**
          * Custom ability items (testing kit)

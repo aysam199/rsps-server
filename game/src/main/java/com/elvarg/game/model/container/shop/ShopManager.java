@@ -199,6 +199,17 @@ public class ShopManager extends ShopIdentifiers {
             return;
         }
 
+        // Ability items are consumable: buying grants a pack of charges (and the
+        // item if not already held) rather than stacking duplicate items.
+        if (shop.getId() == ABILITY_SHOP) {
+            com.elvarg.game.content.abilities.Ability ability =
+                    com.elvarg.game.content.abilities.Ability.forItem(itemId);
+            if (ability != null) {
+                com.elvarg.game.content.abilities.AbilityHandler.purchaseAbility(player, ability);
+            }
+            return;
+        }
+
         // Max buy limit..
         if (amount > 5000) {
             player.getPacketSender().sendMessage("You can only buy a maximum of 5000 at a time.");
@@ -461,8 +472,14 @@ public class ShopManager extends ShopIdentifiers {
             com.elvarg.game.content.abilities.Ability ability =
                     com.elvarg.game.content.abilities.Ability.forItem(itemDef.getId());
             if (ability != null) {
-                return (int) Math.min(Integer.MAX_VALUE, ability.getBuyCost());
+                // Show the price the player will actually pay (donator discount applied).
+                long cost = com.elvarg.game.content.abilities.AbilityHandler.withDonatorDiscount(
+                        player, ability.getBuyCost());
+                return (int) Math.min(Integer.MAX_VALUE, cost);
             }
+        }
+        if (shopId == VOTE_SHOP) {
+            return com.elvarg.game.content.VoteShop.ticketPrice(itemDef.getId());
         }
         return itemDef.getValue();
     }

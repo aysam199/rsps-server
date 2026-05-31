@@ -23,17 +23,24 @@ public class MovementPacketListener implements PacketExecutor {
             return;
         }
 
-        Mobility mobility = player.getMovementQueue().getMobility();
-        if (!mobility.canMove()) {
-            mobility.sendMessage(player);
-            return;
-        }
-
         int absoluteX = packet.readShort();
         int absoluteY = packet.readShort();
         int plane = packet.readUnsignedByte();
 
         Location destination = new Location(absoluteX, absoluteY, plane);
+
+        // If a ground-targeted ability (e.g. Dash) is armed, this map click is
+        // its destination - resolve it instead of walking. Handled before the
+        // mobility check so a gap-closer still works while frozen/stunned.
+        if (com.elvarg.game.content.abilities.AbilityHandler.handleGroundTarget(player, destination)) {
+            return;
+        }
+
+        Mobility mobility = player.getMovementQueue().getMobility();
+        if (!mobility.canMove()) {
+            mobility.sendMessage(player);
+            return;
+        }
 
         if (!player.getMovementQueue().checkDestination(destination)) {
             return;
