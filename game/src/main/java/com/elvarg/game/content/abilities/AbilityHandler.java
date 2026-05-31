@@ -14,6 +14,8 @@ import com.elvarg.game.content.combat.hit.HitMask;
 import com.elvarg.game.content.combat.hit.PendingHit;
 import com.elvarg.game.entity.impl.Mobile;
 import com.elvarg.game.entity.impl.npc.NPC;
+import com.elvarg.game.entity.impl.object.GameObject;
+import com.elvarg.game.entity.impl.object.ObjectManager;
 import com.elvarg.game.entity.impl.player.Player;
 import com.elvarg.game.collision.RegionManager;
 import com.elvarg.game.model.Animation;
@@ -350,7 +352,19 @@ public final class AbilityHandler {
      * doesn't already hold one; otherwise just tops up the charges.
      */
     public static void purchaseAbility(Player player, Ability ability) {
-        long cost = withDonatorDiscount(player, ability.getBuyCost());
+        purchaseAbility(player, ability, 1);
+    }
+
+    /**
+     * Buys {@code packs} packs of charges at once (each pack is
+     * {@link #CHARGES_PER_PURCHASE} charges). The shop's "buy 1/5/10" options map
+     * straight onto this, so buying 5 grants 5 packs for 5x the price.
+     */
+    public static void purchaseAbility(Player player, Ability ability, int packs) {
+        packs = Math.max(1, Math.min(packs, 10));
+        long unit = withDonatorDiscount(player, ability.getBuyCost());
+        long cost = unit * packs;
+        int totalCharges = CHARGES_PER_PURCHASE * packs;
         int coins = player.getInventory().getAmount(com.elvarg.util.ItemIdentifiers.COINS);
         boolean needsItem = !player.getInventory().contains(ability.getItemId());
 
@@ -361,7 +375,7 @@ public final class AbilityHandler {
         if (cost > Integer.MAX_VALUE || coins < cost) {
             player.getPacketSender().sendMessage("You need @red@"
                     + com.elvarg.util.Misc.insertCommasToNumber(Long.toString(cost)) + "@bla@ coins to buy "
-                    + CHARGES_PER_PURCHASE + " charges of " + ability.getDisplayName() + ".");
+                    + totalCharges + " charges of " + ability.getDisplayName() + ".");
             return;
         }
 
@@ -369,9 +383,9 @@ public final class AbilityHandler {
         if (needsItem) {
             player.getInventory().add(ability.getItemId(), 1);
         }
-        int newCharges = player.getAbilityUpgrades().getCharges(ability.getItemId()) + CHARGES_PER_PURCHASE;
+        int newCharges = player.getAbilityUpgrades().getCharges(ability.getItemId()) + totalCharges;
         player.getAbilityUpgrades().setCharges(ability.getItemId(), newCharges);
-        player.getPacketSender().sendMessage("@gre@Bought " + CHARGES_PER_PURCHASE + " charges of "
+        player.getPacketSender().sendMessage("@gre@Bought " + totalCharges + " charges of "
                 + ability.getDisplayName() + " for " + com.elvarg.util.Misc.insertCommasToNumber(Long.toString(cost))
                 + " coins. Total charges: " + newCharges + ".");
     }
@@ -799,6 +813,100 @@ public final class AbilityHandler {
                 }
             });
         }
+    }
+
+    /** Object id used as the visual for the temporary Force Wall. */
+    private static final int WALL_OBJECT_ID = 4765; // "wall of flame"
+
+    /**
+     * Spawns a temporary blocking wall centred on {@code center}, extending
+     * {@code halfLength} tiles each way along the ({@code px},{@code py})
+     * direction. Each tile is both clipped (blocks movement) and shown as a
+     * wall object; both are cleaned up after {@code durationTicks} game ticks.
+     *
+     * @return the number of wall tiles actually created.
+     */
+    public static int spawnWall(Player caster, Location center, int px, int py, int halfLength, int durationTicks) {
+        final PrivateArea area = caster.getPrivateArea();
+        final int z = center.getZ();
+        final List<GameObject> created = new ArrayList<>();
+        for (int k = -halfLength; k <= halfLength; k++) {
+            Location tile = center.transform(px * k, py * k);
+            // Don't wall over already-blocked tiles or the caster's own tile.
+            if (RegionManager.blocked(tile, area) || tile.equals(caster.getLocation())) {
+                continue;
+            }
+            RegionManager.addClipping(tile.getX(), tile.getY(), z, RegionManager.BLOCKED_TILE, area);
+            GameObject obj = new GameObject(WALL_OBJECT_ID, tile, 10, 0, area);
+            ObjectManager.register(obj, true);
+            created.add(obj);
+        }
+        if (!created.isEmpty()) {
+            delay(durationTicks, () -> {
+                for (GameObject obj : created) {
+                    RegionManager.removeClipping(obj.getLocation().getX(), obj.getLocation().getY(),
+                            obj.getLocation().getZ(), RegionManager.BLOCKED_TILE, area);
+                    ObjectManager.deregister(obj, true);
+                }
+            });
+        }
+        return created.size();
+    }
+
+    /**
+     * Fires a straight beam from {@code caster} in the ({@code dx},{@code dy})
+     * direction, up to {@code length} tiles (stopping at walls). Shows a tile
+     * graphic along the path and deals {@code base} (scaled) damage to every
+     * enemy standing in the line.
+     *
+     * @return the final tile the beam reached (for a visual projectile), or
+     *         {@code null} if it couldn't travel at all.
+     */
+    public static Location fireBeam(Player caster, int dx, int dy, int length, int base, Ability ability,
+                                    int tileGfxId, int hitGfxId) {
+        final PrivateArea area = caster.getPrivateArea();
+        List<Location> beam = new ArrayList<>();
+        Location current = caster.getLocation().clone();
+        for (int i = 0; i < length; i++) {
+            Location next = current.transform(dx, dy);
+            if (!RegionManager.canMove(current, next, 1, 1, area)) {
+                break;
+            }
+            current = next;
+            beam.add(current.clone());
+            tileGfx(tileGfxId, current, GraphicHeight.LOW);
+        }
+        if (beam.isEmpty()) {
+            return null;
+        }
+        for (Player p : World.getPlayers()) {
+            if (p == null || p == caster || !canHit(caster, p)) {
+                continue;
+            }
+            if (beamContains(beam, p.getLocation())) {
+                gfx(p, hitGfxId, GraphicHeight.HIGH);
+                damage(caster, p, base, ability);
+            }
+        }
+        for (NPC npc : World.getNpcs()) {
+            if (npc == null || !canHit(caster, npc)) {
+                continue;
+            }
+            if (beamContains(beam, npc.getLocation())) {
+                gfx(npc, hitGfxId, GraphicHeight.HIGH);
+                damage(caster, npc, base, ability);
+            }
+        }
+        return beam.get(beam.size() - 1);
+    }
+
+    private static boolean beamContains(List<Location> beam, Location loc) {
+        for (Location l : beam) {
+            if (l.getX() == loc.getX() && l.getY() == loc.getY() && l.getZ() == loc.getZ()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Convenience: schedule {@code action} to run after {@code ticks} game ticks. */

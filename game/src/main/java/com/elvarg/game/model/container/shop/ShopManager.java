@@ -205,7 +205,8 @@ public class ShopManager extends ShopIdentifiers {
             com.elvarg.game.content.abilities.Ability ability =
                     com.elvarg.game.content.abilities.Ability.forItem(itemId);
             if (ability != null) {
-                com.elvarg.game.content.abilities.AbilityHandler.purchaseAbility(player, ability);
+                // "Buy 1/5/10" each grant a full pack of charges; buying N buys N packs.
+                com.elvarg.game.content.abilities.AbilityHandler.purchaseAbility(player, ability, amount);
             }
             return;
         }

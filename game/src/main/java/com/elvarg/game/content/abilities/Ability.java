@@ -423,6 +423,122 @@ public enum Ability {
                 });
             }
         }
+    },
+
+    /**
+     * Blasts a target several tiles directly away from you, stunning them
+     * briefly. The push distance scales with the Distance upgrade.
+     */
+    FORCE_PUSH(6528, "Force Push", 8_000, 8, true) {
+        @Override
+        public UpgradeType getSecondaryUpgrade() {
+            return UpgradeType.DISTANCE;
+        }
+
+        @Override
+        public void activate(Player caster, Mobile target) {
+            caster.getPacketSender().sendMessage("You unleash a wave of force!");
+            AbilityHandler.anim(caster, 1378);
+            AbilityHandler.gfx(target, GFX_DASH, GraphicHeight.HIGH);
+            int dist = 3 + AbilityHandler.bonusDistance(caster, this);
+            int dx = Integer.signum(target.getLocation().getX() - caster.getLocation().getX());
+            int dy = Integer.signum(target.getLocation().getY() - caster.getLocation().getY());
+            if (dx == 0 && dy == 0) {
+                dy = 1;
+            }
+            Location aim = target.getLocation().transform(dx * dist, dy * dist);
+            Location dest = AbilityHandler.stepTowards(target.getLocation(), aim, dist, 0, caster.getPrivateArea());
+            AbilityHandler.forceMove(target, dest, 2, 0);
+            AbilityHandler.stun(target, 1);
+            AbilityHandler.damage(caster, target, 3 + Misc.getRandom(6), this);
+            if (target.isPlayer()) {
+                target.getAsPlayer().getPacketSender().sendMessage("You're blasted backwards!");
+            }
+        }
+    },
+
+    /**
+     * Ground-targeted: raises a short, temporary wall of force that blocks
+     * movement for a few seconds. Wall length scales with the Distance upgrade.
+     */
+    FORCE_WALL(6524, "Force Wall", 22_000, 0, false) {
+        @Override
+        public boolean isGroundTargeted() {
+            return true;
+        }
+
+        @Override
+        public UpgradeType getSecondaryUpgrade() {
+            return UpgradeType.DISTANCE;
+        }
+
+        @Override
+        public void activate(Player caster, Mobile target) {
+            // Fallback if ever cast without a tile click - raise it to the north.
+            activateAt(caster, caster.getLocation().transform(0, 1));
+        }
+
+        @Override
+        public boolean activateAt(Player caster, Location clicked) {
+            Location from = caster.getLocation();
+            int dx = Integer.signum(clicked.getX() - from.getX());
+            int dy = Integer.signum(clicked.getY() - from.getY());
+            if (dx == 0 && dy == 0) {
+                caster.getPacketSender().sendMessage("Click a tile away from yourself to raise a wall.");
+                return false;
+            }
+            // Place the wall a few tiles in front of you, oriented across the
+            // direction you aimed.
+            Location center = AbilityHandler.stepTowards(from, clicked, 6, 0, caster.getPrivateArea());
+            int px = -dy;
+            int py = dx;
+            int half = Math.min(1 + AbilityHandler.bonusDistance(caster, this), 3);
+            int built = AbilityHandler.spawnWall(caster, center, px, py, half, 8);
+            if (built <= 0) {
+                caster.getPacketSender().sendMessage("There's no room to raise a wall there.");
+                return false;
+            }
+            AbilityHandler.anim(caster, 1979);
+            AbilityHandler.tileGfx(GFX_FROST, center, GraphicHeight.LOW);
+            caster.getPacketSender().sendMessage("You raise a wall of force!");
+            return true;
+        }
+    },
+
+    /**
+     * Ground-targeted: fires a long beam in the chosen direction, scorching
+     * every enemy caught in the line. Damage scales with the Damage upgrade.
+     */
+    LIGHT_BEAM(1409, "Light Beam", 12_000, 0, false) {
+        @Override
+        public boolean isGroundTargeted() {
+            return true;
+        }
+
+        @Override
+        public void activate(Player caster, Mobile target) {
+            // Fallback if ever cast without a tile click - fire straight north.
+            activateAt(caster, caster.getLocation().transform(0, 1));
+        }
+
+        @Override
+        public boolean activateAt(Player caster, Location clicked) {
+            Location from = caster.getLocation();
+            int dx = Integer.signum(clicked.getX() - from.getX());
+            int dy = Integer.signum(clicked.getY() - from.getY());
+            if (dx == 0 && dy == 0) {
+                caster.getPacketSender().sendMessage("Click a tile away from yourself to aim the beam.");
+                return false;
+            }
+            caster.getPacketSender().sendMessage("You fire a searing beam of light!");
+            AbilityHandler.anim(caster, 1979);
+            Location end = AbilityHandler.fireBeam(caster, dx, dy, BEAM_TILES, 6 + Misc.getRandom(8), this,
+                    GFX_FROST, GFX_EXECUTE);
+            if (end != null) {
+                Projectile.sendProjectile(from, end, new Projectile(PROJECTILE_CHAIN, 40, 36, 35, 10));
+            }
+            return true;
+        }
     };
 
     // ------------------------------------------------------------------
@@ -436,6 +552,9 @@ public enum Ability {
 
     /** Number of tiles the Dash ability travels. */
     private static final int DASH_TILES = 4;
+
+    /** Maximum length (tiles) of the Light Beam. */
+    private static final int BEAM_TILES = 8;
 
     private static final int GFX_DASH = 268;
     private static final int GFX_EARTHQUAKE = 369;
@@ -579,6 +698,9 @@ public enum Ability {
         put(12904, "Gravity Well: drag in every nearby enemy and stun them.");
         put(13899, "Blink Strike: blink to a target, striking and briefly stunning them.");
         put(21015, "Bulwark: cleanse freezes/stuns on yourself and recover a burst of health (upgradeable healing).");
+        put(6528, "Force Push: blast a target several tiles backwards and stun them (upgradeable push distance).");
+        put(6524, "Force Wall: activate, then click a tile to raise a temporary wall of force that blocks movement (upgradeable length).");
+        put(1409, "Light Beam: activate, then click a direction to fire a beam that scorches every enemy in the line (upgradeable damage).");
     }};
 
     /**
