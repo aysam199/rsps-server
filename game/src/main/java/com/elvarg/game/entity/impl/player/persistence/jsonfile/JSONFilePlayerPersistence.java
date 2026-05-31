@@ -5,6 +5,7 @@ import com.elvarg.game.entity.impl.player.Player;
 import com.elvarg.game.entity.impl.player.persistence.PlayerPersistence;
 import com.elvarg.game.entity.impl.player.persistence.PlayerSave;
 import com.elvarg.util.Misc;
+import com.elvarg.util.PasswordUtil;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
@@ -64,14 +65,26 @@ public class JSONFilePlayerPersistence extends PlayerPersistence {
 
     @Override
     public String encryptPassword(String plainPassword) {
-        // TODO: Fix password encryption for JSON
-        return plainPassword;
+        return PasswordUtil.generatePasswordHashWithSalt(plainPassword);
     }
 
     @Override
     public boolean checkPassword(String plainPassword, PlayerSave playerSave) {
-        // TODO: Fix password encryption for JSON
-        return plainPassword.equals(playerSave.getPasswordHashWithSalt());
+        String stored = playerSave.getPasswordHashWithSalt();
+        if (stored == null) {
+            return false;
+        }
+        // New accounts store a salted hash in the form "base64Salt:base64Hash".
+        // Accounts created before hashing was enabled stored the password in
+        // plaintext, so fall back to a direct comparison for those.
+        if (stored.contains(":")) {
+            try {
+                return PasswordUtil.passwordsMatch(plainPassword, stored);
+            } catch (Exception ignored) {
+                // Malformed hash - fall through to legacy plaintext check.
+            }
+        }
+        return plainPassword.equals(stored);
     }
 
     private void setupDirectory(File file) {
