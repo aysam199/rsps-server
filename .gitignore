@@ -1,3 +1,6 @@
 build/
 .gradle/
 *.log
+
+# Private voting config (callback secrets must never be committed)
+data/vote_sites.properties

@@ -74,27 +74,49 @@ public final class VoteHandler {
     }
 
     // =====================================================================
-    //  CONFIGURE THESE once you register the server on toplist websites.
-    //  Modern toplists (RuneLocus, RuneList, RSPS.org) use the CALLBACK model:
-    //  they call our endpoint when a player votes. For each site:
-    //    1. Register the server and grab your vote-page URL.
-    //    2. Pick a secret and set the site's Callback URL to:
-    //         http://82.70.213.105:8085/vote/<Name>?key=<secret>
-    //       (the site appends the player's username; we read user/username/name/
-    //        playername/userid/callback, or the trailing path segment).
-    //    3. Add an entry below with Toplist.callback(name, voteUrl, secret).
+    //  Toplists are configured in a properties file that lives ONLY on the
+    //  server (never committed), so the callback secrets stay private:
     //
-    //  Example:
-    //    Toplist.callback("RuneLocus",
-    //        "https://www.runelocus.com/vote/?id=YOURID", "a-long-random-secret"),
-    //    Toplist.callback("RuneList",
-    //        "https://runelist.io/vote/YOURID",           "another-random-secret"),
-    //    Toplist.callback("RSPS.org",
-    //        "https://rsps.org/vote/YOURID",              "yet-another-secret"),
+    //      data/vote_sites.properties   (next to data/definitions/)
+    //
+    //  Format - one numbered block per site (site.1.*, site.2.*, ...):
+    //      site.1.name=RuneLocus
+    //      site.1.url=https://www.runelocus.com/vote/?id=YOURID
+    //      site.1.secret=8bdbf4ba7dd2ae33cb2385beff62ac83
+    //
+    //  Then set each toplist's Callback URL (in its dashboard) to:
+    //      http://82.70.213.105:8085/vote/<name>?key=<secret>
+    //  The site appends the username; we read user/username/name/playername/
+    //  userid/callback, or the trailing path segment. Edit the file and restart
+    //  to add/change sites - no code redeploy needed.
     // =====================================================================
-    public static final Toplist[] SITES = {
-        // Add your toplists here.
-    };
+    public static final Toplist[] SITES = loadSites();
+
+    /** Loads {@link #SITES} from {@code data/vote_sites.properties}, if present. */
+    private static Toplist[] loadSites() {
+        java.io.File file = new java.io.File("../data/vote_sites.properties");
+        if (!file.exists()) {
+            return new Toplist[0];
+        }
+        java.util.Properties props = new java.util.Properties();
+        try (java.io.FileInputStream in = new java.io.FileInputStream(file)) {
+            props.load(in);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return new Toplist[0];
+        }
+        java.util.List<Toplist> list = new java.util.ArrayList<>();
+        for (int i = 1; i <= 20; i++) {
+            String name = props.getProperty("site." + i + ".name");
+            if (name == null || name.trim().isEmpty()) {
+                continue;
+            }
+            String url = props.getProperty("site." + i + ".url", "").trim();
+            String secret = props.getProperty("site." + i + ".secret", "").trim();
+            list.add(Toplist.callback(name.trim(), url, secret));
+        }
+        return list.toArray(new Toplist[0]);
+    }
 
     /** TCP port the callback HTTP listener binds to (open this in Oracle + firewall). */
     public static final int CALLBACK_PORT = 8085;
