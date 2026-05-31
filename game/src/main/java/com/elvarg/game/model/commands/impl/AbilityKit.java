@@ -1,12 +1,12 @@
 package com.elvarg.game.model.commands.impl;
 
-import com.elvarg.Server;
 import com.elvarg.game.World;
 import com.elvarg.game.content.abilities.Ability;
 import com.elvarg.game.entity.impl.npc.NPC;
 import com.elvarg.game.entity.impl.player.Player;
 import com.elvarg.game.model.Location;
 import com.elvarg.game.model.commands.Command;
+import com.elvarg.game.model.rights.PlayerRights;
 
 /**
  * Developer/testing command that hands out all custom ability items and spawns
@@ -47,7 +47,9 @@ public class AbilityKit implements Command {
 
     @Override
     public boolean canUse(Player player) {
-        // Available to everyone while the server is in development/testing mode only.
-        return !Server.PRODUCTION;
+        // Staff-only: this hands out all abilities for free, so it must never be
+        // available to regular players (it would bypass the entire gold economy).
+        PlayerRights rights = player.getRights();
+        return rights == PlayerRights.OWNER || rights == PlayerRights.DEVELOPER;
     }
 }
