@@ -3,27 +3,31 @@
 # Copy this file to "vote_sites.properties" (same folder) on the SERVER and fill
 # in your real values. This file is read at startup by VoteHandler; edit it and
 # restart the server to add/change sites. The real vote_sites.properties is
-# git-ignored on purpose so your callback secrets are never committed.
+# git-ignored on purpose so your callback secrets are NEVER committed.
+#
+# IMPORTANT: do not put real secrets in THIS .example file - it is committed to
+# git. Generate a fresh secret per site with:  openssl rand -hex 16
 #
 # For each toplist, after you register your server:
 #   1. Grab the vote-page URL players click (the "url" below).
-#   2. Pick/keep a long random secret (the "secret" below).
+#   2. Generate a long random secret (the "secret" below).
 #   3. In the toplist dashboard, set the Callback URL to:
 #        http://82.70.213.105:8085/vote/<name>?key=<secret>
 #      (use the same <name> and <secret> as below; the site appends the
 #       player's username automatically).
 #   4. Open TCP port 8085 in Oracle's security list AND the VPS firewall.
 #
+# The <name> in the callback URL must match site.N.name exactly (case-insensitive).
 # Add up to 20 sites: site.1.*, site.2.*, ...
 
 site.1.name=RuneLocus
 site.1.url=https://www.runelocus.com/vote/?id=YOUR_RUNELOCUS_ID
-site.1.secret=8bdbf4ba7dd2ae33cb2385beff62ac83
+site.1.secret=REPLACE_WITH_openssl_rand_hex_16
 
-site.2.name=RuneList
-site.2.url=https://runelist.io/vote/YOUR_RUNELIST_ID
-site.2.secret=0f77d2cb259473e232882f7bd17ee631
+site.2.name=RSPS.org
+site.2.url=https://rsps.org/vote/YOUR_RSPSORG_ID
+site.2.secret=REPLACE_WITH_openssl_rand_hex_16
 
-site.3.name=RSPS.org
-site.3.url=https://rsps.org/vote/YOUR_RSPSORG_ID
-site.3.secret=8b29b243d6ce90b9af578b1c6b371f2c
+site.3.name=RSPSList
+site.3.url=https://rspslist.com/vote/YOUR_RSPSLIST_ID
+site.3.secret=REPLACE_WITH_openssl_rand_hex_16
