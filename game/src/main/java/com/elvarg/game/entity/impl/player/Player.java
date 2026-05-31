@@ -682,6 +682,20 @@ public class Player extends Mobile {
 		if (this.newPlayer) {
 			int presetIndex = Misc.randomInclusive(0, Presetables.GLOBAL_PRESETS.length-1);
 			Presetables.load(this, Presetables.GLOBAL_PRESETS[presetIndex]);
+
+			// New-player starter kit: a small amount of gold to get started (not
+			// enough to buy an ability outright - they still have to grind a bit),
+			// plus a welcome message pointing them at the custom ability content.
+			final int starterCoins = 50_000;
+			if (getInventory().getFreeSlots() > 0 || getInventory().contains(995)) {
+				getInventory().add(new Item(995, starterCoins));
+			} else {
+				getBank(0).add(new Item(995, starterCoins));
+			}
+			getPacketSender().sendMessage("Welcome! You've received "
+					+ Misc.insertCommasToNumber(Integer.toString(starterCoins)) + " starter coins.");
+			getPacketSender().sendMessage("Visit the Ability Master at home to buy and upgrade special abilities.");
+			getPacketSender().sendMessage("Earn more gold by killing monsters (PvM) and defeating players in the Wilderness (PvP).");
 		}
 
 		if (!(this instanceof PlayerBot)) {

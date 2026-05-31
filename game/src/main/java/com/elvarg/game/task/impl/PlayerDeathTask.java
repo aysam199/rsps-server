@@ -13,6 +13,7 @@ import com.elvarg.game.entity.impl.playerbot.PlayerBot;
 import com.elvarg.game.model.*;
 import com.elvarg.game.model.rights.PlayerRights;
 import com.elvarg.game.task.Task;
+import com.elvarg.util.Misc;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -146,6 +147,24 @@ public class PlayerDeathTask extends Task {
 						if (k.getArea() != null) {
 							k.getArea().defeated(k, player);
 						}
+
+						// Reward the killer with gold for a genuine Wilderness PvP kill.
+						// Restricted to real players killing other real players in the
+						// Wilderness so practice bots and duels can't be farmed for coins.
+						if (k != player
+								&& !(k instanceof PlayerBot) && !(player instanceof PlayerBot)
+								&& player.getArea() instanceof com.elvarg.game.model.areas.impl.WildernessArea) {
+							int reward = 10_000 + Misc.getRandom(5_000);
+							if (k.getInventory().getFreeSlots() > 0 || k.getInventory().contains(995)) {
+								k.getInventory().add(new Item(995, reward));
+							} else {
+								ItemOnGroundManager.register(k, new Item(995, reward), k.getLocation());
+							}
+							k.getPacketSender().sendMessage("@red@You earned "
+									+ Misc.insertCommasToNumber(Integer.toString(reward))
+									+ " coins for defeating " + player.getUsername() + "!");
+						}
+
 						if (!dropped) {
 							killer.get().getPacketSender()
 									.sendMessage("" + player.getUsername() + " had no valuable items to be dropped.");
