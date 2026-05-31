@@ -42,34 +42,74 @@ public final class VoteHandler {
         /** The page players open in their browser to vote. */
         public final String voteUrl;
         /**
-         * The toplist's verify/callback API. Supports {user} and {ip}
-         * placeholders, filled in per player. Leave blank to just show the link
-         * without auto-rewarding. Many toplists return a body of "1" when the
-         * player has an unclaimed vote - see {@link #isVoteClaimable}.
+         * Optional legacy pull/verify API (server polls the toplist). Supports
+         * {user} and {ip} placeholders. Leave blank for the callback model.
          */
         public final String checkUrl;
+        /**
+         * Shared secret for the callback model. The toplist calls our callback
+         * endpoint (see {@link VoteCallbackServer}) when a player votes; we only
+         * accept the callback if it carries this secret. You pick this value and
+         * embed it in the callback URL you paste into the toplist dashboard, e.g.
+         * {@code http://YOUR_IP:8085/vote/RuneLocus?key=THIS_SECRET}.
+         * Leave blank to accept callbacks without a secret check (not recommended).
+         */
+        public final String secret;
 
         public Toplist(String name, String voteUrl, String checkUrl) {
+            this(name, voteUrl, checkUrl, "");
+        }
+
+        public Toplist(String name, String voteUrl, String checkUrl, String secret) {
             this.name = name;
             this.voteUrl = voteUrl;
             this.checkUrl = checkUrl;
+            this.secret = secret;
+        }
+
+        /** Convenience for the callback model (no pull/verify URL needed). */
+        public static Toplist callback(String name, String voteUrl, String secret) {
+            return new Toplist(name, voteUrl, "", secret);
         }
     }
 
     // =====================================================================
     //  CONFIGURE THESE once you register the server on toplist websites.
-    //  Add one entry per site. Example:
+    //  Modern toplists (RuneLocus, RuneList, RSPS.org) use the CALLBACK model:
+    //  they call our endpoint when a player votes. For each site:
+    //    1. Register the server and grab your vote-page URL.
+    //    2. Pick a secret and set the site's Callback URL to:
+    //         http://82.70.213.105:8085/vote/<Name>?key=<secret>
+    //       (the site appends the player's username; we read user/username/name/
+    //        playername/userid/callback, or the trailing path segment).
+    //    3. Add an entry below with Toplist.callback(name, voteUrl, secret).
     //
-    //    new Toplist("RuneLocus",
-    //        "https://www.runelocus.com/vote/?id=YOURID",
-    //        "https://www.runelocus.com/modules/vote/check.php?key=KEY&user={user}&ip={ip}"),
-    //    new Toplist("RuneList",
-    //        "https://runelist.io/vote/YOURID",
-    //        "https://runelist.io/api/vote/check?key=KEY&user={user}&ip={ip}"),
+    //  Example:
+    //    Toplist.callback("RuneLocus",
+    //        "https://www.runelocus.com/vote/?id=YOURID", "a-long-random-secret"),
+    //    Toplist.callback("RuneList",
+    //        "https://runelist.io/vote/YOURID",           "another-random-secret"),
+    //    Toplist.callback("RSPS.org",
+    //        "https://rsps.org/vote/YOURID",              "yet-another-secret"),
     // =====================================================================
     public static final Toplist[] SITES = {
         // Add your toplists here.
     };
+
+    /** TCP port the callback HTTP listener binds to (open this in Oracle + firewall). */
+    public static final int CALLBACK_PORT = 8085;
+
+    /**
+     * Votes confirmed by an incoming callback but not yet credited (e.g. the
+     * player was offline, or hasn't ticked yet). Keyed by normalised username ->
+     * (site name -> time recorded). Drained onto the game thread by
+     * {@link #drainCallbackVotes(Player)}.
+     */
+    private static final java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.ConcurrentHashMap<String, Long>> PENDING_CALLBACK =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** Drop unclaimed callback votes after this long so the map can't grow forever. */
+    private static final long PENDING_CALLBACK_TTL_MS = 7L * 24L * 60L * 60L * 1000L;
 
     /** Vote tickets granted per confirmed vote (per site). */
     public static final int TICKETS_PER_VOTE = 1;
@@ -91,18 +131,29 @@ public final class VoteHandler {
 
         player.getPacketSender().sendMessage("@blu@Vote for us to earn Vote tickets - spend them in the Vote Shop (::voteshop):");
 
-        boolean anyCheck = false;
         for (Toplist site : SITES) {
             if (!isBlank(site.voteUrl)) {
                 player.getPacketSender().sendMessage("@blu@" + site.name + ": @bla@" + site.voteUrl);
             }
-            if (!isBlank(site.checkUrl)) {
-                anyCheck = true;
-            }
         }
 
+        // Credit anything a toplist already confirmed via the callback endpoint.
+        drainCallbackVotes(player);
+        if (!player.getPendingVoteSites().isEmpty()) {
+            grantPendingRewards(player);
+        }
+
+        // Legacy pull/verify sites (server polls the toplist) still work too.
+        boolean anyCheck = false;
+        for (Toplist site : SITES) {
+            if (!isBlank(site.checkUrl)) {
+                anyCheck = true;
+                break;
+            }
+        }
         if (!anyCheck) {
-            player.getPacketSender().sendMessage("Your tickets will be credited automatically once voting is fully enabled.");
+            player.getPacketSender().sendMessage(
+                    "After you vote, your ticket is credited automatically within a few seconds.");
             return;
         }
 
@@ -201,6 +252,84 @@ public final class VoteHandler {
 
         player.getPacketSender().sendMessage("@gre@Thanks for voting! You received " + totalTickets
                 + " Vote ticket(s). Spend them in the Vote Shop (::voteshop).");
+    }
+
+    /**
+     * Called by {@link VoteCallbackServer} when a toplist posts a confirmed vote
+     * to our callback endpoint. Validates the site + secret and records the vote
+     * for later crediting on the game thread.
+     *
+     * @param siteName the site segment from the callback URL (e.g. "RuneLocus")
+     * @param key      the secret supplied by the caller (may be null)
+     * @param username the voting player's in-game name (may be null)
+     * @return true if the callback was accepted and recorded
+     */
+    public static boolean handleCallback(String siteName, String key, String username) {
+        if (isBlank(siteName) || isBlank(username)) {
+            return false;
+        }
+
+        Toplist match = null;
+        for (Toplist site : SITES) {
+            if (site.name.equalsIgnoreCase(siteName.trim())) {
+                match = site;
+                break;
+            }
+        }
+        if (match == null) {
+            return false;
+        }
+
+        // If a secret is configured, the callback must carry it exactly.
+        if (!isBlank(match.secret) && !match.secret.equals(key)) {
+            return false;
+        }
+
+        String norm = normalize(username);
+        prunePendingCallbacks();
+        PENDING_CALLBACK
+                .computeIfAbsent(norm, k -> new java.util.concurrent.ConcurrentHashMap<>())
+                .put(match.name, System.currentTimeMillis());
+        return true;
+    }
+
+    /** Cheap guard so {@code Player#process} only drains when something is pending. */
+    public static boolean hasPendingCallbacks() {
+        return !PENDING_CALLBACK.isEmpty();
+    }
+
+    /**
+     * Moves any callback-confirmed votes for this player onto their per-account
+     * pending queue. Safe to call from the game thread; the actual ticket grant
+     * and 12h cooldown are still enforced by {@link #grantPendingRewards(Player)}.
+     */
+    public static void drainCallbackVotes(Player player) {
+        if (PENDING_CALLBACK.isEmpty()) {
+            return;
+        }
+        java.util.concurrent.ConcurrentHashMap<String, Long> sites =
+                PENDING_CALLBACK.remove(normalize(player.getUsername()));
+        if (sites == null) {
+            return;
+        }
+        for (String site : sites.keySet()) {
+            player.addPendingVoteSite(site);
+        }
+    }
+
+    private static void prunePendingCallbacks() {
+        long now = System.currentTimeMillis();
+        PENDING_CALLBACK.forEach((user, sites) -> {
+            sites.values().removeIf(ts -> now - ts > PENDING_CALLBACK_TTL_MS);
+            if (sites.isEmpty()) {
+                PENDING_CALLBACK.remove(user);
+            }
+        });
+    }
+
+    /** Normalises a username for matching (case- and separator-insensitive). */
+    private static String normalize(String name) {
+        return name == null ? "" : name.trim().toLowerCase().replace('_', ' ');
     }
 
     /**

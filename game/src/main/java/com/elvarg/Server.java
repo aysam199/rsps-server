@@ -61,6 +61,7 @@ public class Server {
             new GameBuilder().initialize();
             EventManager.INSTANCE.postAndWait(new ServerBootEvent());
             new NetworkBuilder().initialize(NetworkConstants.GAME_PORT);
+            com.elvarg.game.content.VoteCallbackServer.start();
             logger.info(GameConstants.NAME + " is now online!");
             EventManager.INSTANCE.post(new ServerStartedEvent());
         } catch (Exception e) {

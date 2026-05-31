@@ -404,7 +404,11 @@ public class Player extends Mobile {
 		// Timers
 		getTimers().process();
 
-		// Grant any vote rewards confirmed by the background verification thread.
+		// Pull in any votes a toplist confirmed via the callback endpoint, then
+		// grant rewards confirmed here or by the background verification thread.
+		if (com.elvarg.game.content.VoteHandler.hasPendingCallbacks()) {
+			com.elvarg.game.content.VoteHandler.drainCallbackVotes(this);
+		}
 		if (!pendingVoteSites.isEmpty()) {
 			com.elvarg.game.content.VoteHandler.grantPendingRewards(this);
 		}
