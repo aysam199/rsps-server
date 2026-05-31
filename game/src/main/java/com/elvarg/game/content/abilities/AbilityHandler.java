@@ -549,6 +549,12 @@ public final class AbilityHandler {
         if (target.isPlayer()) {
             return AreaManager.canAttack(caster, target) == CanAttackResponse.CAN_ATTACK;
         }
+        // NPCs: only genuine combat NPCs may be hit - never bankers, shopkeepers,
+        // the Ability Master, etc. (those are flagged non-attackable in their defs).
+        if (target.isNpc()) {
+            return target.getAsNpc().getDefinition() != null
+                    && target.getAsNpc().getDefinition().isAttackable();
+        }
         return true;
     }
 

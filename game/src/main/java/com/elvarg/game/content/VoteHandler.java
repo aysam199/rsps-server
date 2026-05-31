@@ -92,6 +92,9 @@ public final class VoteHandler {
     // =====================================================================
     public static final Toplist[] SITES = loadSites();
 
+    /** Landing page (vote section) opened by {@code ::vote}. */
+    public static final String VOTE_PAGE_URL = "https://leaguescape-bc70d.web.app/#vote";
+
     /** Loads {@link #SITES} from {@code data/vote_sites.properties}, if present. */
     private static Toplist[] loadSites() {
         java.io.File file = new java.io.File("../data/vote_sites.properties");
@@ -146,18 +149,12 @@ public final class VoteHandler {
      * Entry point for the {@code ::vote} command.
      */
     public static void vote(Player player) {
-        if (SITES.length == 0) {
-            player.getPacketSender().sendMessage("Voting isn't set up yet - check back soon!");
-            return;
-        }
-
-        player.getPacketSender().sendMessage("@blu@Vote for us to earn Vote tickets - spend them in the Vote Shop (::voteshop):");
-
-        for (Toplist site : SITES) {
-            if (!isBlank(site.voteUrl)) {
-                player.getPacketSender().sendMessage("@blu@" + site.name + ": @bla@" + site.voteUrl);
-            }
-        }
+        // Open the landing page's vote section in the player's browser; it lists
+        // every toplist with working links. Tickets are credited automatically
+        // once a toplist confirms the vote via our callback endpoint.
+        player.getPacketSender().sendURL(VOTE_PAGE_URL);
+        player.getPacketSender().sendMessage("@blu@Opening the vote page - vote on each site to earn Vote tickets (spend at ::voteshop).");
+        player.getPacketSender().sendMessage("Your ticket is credited automatically within a few seconds of voting.");
 
         // Credit anything a toplist already confirmed via the callback endpoint.
         drainCallbackVotes(player);
@@ -174,8 +171,6 @@ public final class VoteHandler {
             }
         }
         if (!anyCheck) {
-            player.getPacketSender().sendMessage(
-                    "After you vote, your ticket is credited automatically within a few seconds.");
             return;
         }
 

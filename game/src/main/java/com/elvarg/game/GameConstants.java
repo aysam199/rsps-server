@@ -148,16 +148,9 @@ public class GameConstants {
 			544, 542, 1035, 1033, 579, 577, 1011, 554, 555, 556, 557, 558, 559, 561, 563, 562, 560, 565, 566, 9075,
 			1704, 1731, 1725, 1727, 1729));
 
-	public static final PlayerBotDefinition[] PLAYER_BOTS = new PlayerBotDefinition[]{
-			new PlayerBotDefinition("Bot Hello123", new Location(3085, 3528), new ObbyMaulerFighterPreset()),
-			new PlayerBotDefinition("Elvemage", new Location(3093, 3529), new NHPureFighterPreset()),
-			new PlayerBotDefinition("Bot 1337Pk", new Location(3087, 3530),  new DDSPureRFighterPreset()),
-			new PlayerBotDefinition("Bot Kids Ranqe", new Location(3089, 3530), new GRangerFighterPreset()),
-			new PlayerBotDefinition("Bot Josh", new Location(3091, 3533), new DDSPureMFighterPreset()),
-			new PlayerBotDefinition("Bot Odablock", new Location(3091, 3536), new TribridMaxFighterPreset()),
-			new PlayerBotDefinition("Bot SKillSpecs", new Location(3095, 3535), new MidTribridMaxFighterPreset()),
-			new PlayerBotDefinition("Bot F2P Pure", new Location(3096, 3530), new F2PMeleeFighterPreset()),
-	};
+	// Fake player-bots disabled: no NPC "players" wandering Edgeville / the
+	// Wilderness. Re-add PlayerBotDefinition entries here to bring them back.
+	public static final PlayerBotDefinition[] PLAYER_BOTS = new PlayerBotDefinition[]{};
 
 	// The password for every player bot account
 	public static String PLAYER_BOT_PASSWORD = "wirfunerpro4n!1";

@@ -77,6 +77,13 @@ public class Presetables {
 	 * @param preset
 	 */
 	public static void open(Player player, Presetable preset) {
+		// Presets (and their free predefined gear) are disabled on this server's
+		// real economy. Staff keep access for testing; bots are unaffected.
+		if (!(player instanceof PlayerBot)
+				&& player.getRights() != PlayerRights.OWNER
+				&& player.getRights() != PlayerRights.DEVELOPER) {
+			return;
+		}
 		if (preset != null) {
 
 			// Send name

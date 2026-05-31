@@ -5,6 +5,7 @@ import com.elvarg.game.definition.ItemDefinition;
 import com.elvarg.game.entity.impl.player.Player;
 import com.elvarg.game.model.areas.impl.WildernessArea;
 import com.elvarg.game.model.container.impl.Bank;
+import com.elvarg.game.model.rights.PlayerRights;
 import com.elvarg.net.packet.Packet;
 import com.elvarg.net.packet.PacketExecutor;
 
@@ -16,7 +17,16 @@ import com.elvarg.net.packet.PacketExecutor;
 
 public class SpawnItemPacketListener implements PacketExecutor {
 
+    /** Item spawning is a staff-only tool; normal players have no eco shortcut. */
+    private static boolean canSpawn(Player player) {
+        return player.getRights() == PlayerRights.OWNER || player.getRights() == PlayerRights.DEVELOPER;
+    }
+
     public static void spawn(Player player, int item, int amount, boolean toBank) {
+
+        if (!canSpawn(player)) {
+            return;
+        }
 
         if (amount < 0) {
             return;
@@ -62,6 +72,9 @@ public class SpawnItemPacketListener implements PacketExecutor {
 
     @Override
     public void execute(Player player, Packet packet) {
+        if (!canSpawn(player)) {
+            return;
+        }
         final int item = packet.readInt();
         final boolean spawnX = packet.readByte() == 1;
         final boolean toBank = packet.readByte() == 1;
