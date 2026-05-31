@@ -233,6 +233,13 @@ public class Player extends Mobile {
 	private DonatorRights donatorRights = DonatorRights.NONE;
 	// Custom MOBA-style ability progression (cooldown/damage upgrades).
 	private com.elvarg.game.content.abilities.AbilityUpgrades abilityUpgrades = new com.elvarg.game.content.abilities.AbilityUpgrades();
+	// Daily login reward tracking.
+	private long lastDailyReward;
+	private int dailyStreak;
+	// Voting reward tracking. Total verified votes (for stats / future vote shop).
+	private int totalVotes;
+	// Coins awarded by an off-thread vote verification, consumed on the game thread.
+	private final java.util.concurrent.atomic.AtomicInteger pendingVoteRewards = new java.util.concurrent.atomic.AtomicInteger(0);
 	/**
 	 * The cached player update block for updating.
 	 */
@@ -389,6 +396,11 @@ public class Player extends Mobile {
 	public void process() {
 		// Timers
 		getTimers().process();
+
+		// Grant any vote rewards confirmed by the background verification thread.
+		if (pendingVoteRewards.get() > 0) {
+			com.elvarg.game.content.VoteHandler.grantPendingRewards(this);
+		}
 
 		// Process incoming packets...
 		PlayerSession session = getSession();
@@ -696,6 +708,11 @@ public class Player extends Mobile {
 					+ Misc.insertCommasToNumber(Integer.toString(starterCoins)) + " starter coins.");
 			getPacketSender().sendMessage("Visit the Ability Master at home to buy and upgrade special abilities.");
 			getPacketSender().sendMessage("Earn more gold by killing monsters (PvM) and defeating players in the Wilderness (PvP).");
+		}
+
+		// Daily login reward (handles its own once-per-day eligibility + streak).
+		if (!(this instanceof PlayerBot)) {
+			com.elvarg.game.content.DailyRewards.handleLogin(this);
 		}
 
 		if (!(this instanceof PlayerBot)) {
@@ -1488,6 +1505,42 @@ public class Player extends Mobile {
 			abilityUpgrades = new com.elvarg.game.content.abilities.AbilityUpgrades();
 		}
 		return abilityUpgrades;
+	}
+
+	public long getLastDailyReward() {
+		return lastDailyReward;
+	}
+
+	public void setLastDailyReward(long lastDailyReward) {
+		this.lastDailyReward = lastDailyReward;
+	}
+
+	public int getDailyStreak() {
+		return dailyStreak;
+	}
+
+	public void setDailyStreak(int dailyStreak) {
+		this.dailyStreak = dailyStreak;
+	}
+
+	public int getTotalVotes() {
+		return totalVotes;
+	}
+
+	public void setTotalVotes(int totalVotes) {
+		this.totalVotes = totalVotes;
+	}
+
+	/**
+	 * Called from a background vote-verification thread to credit confirmed votes.
+	 * The reward is actually granted on the game thread in {@link #process()}.
+	 */
+	public void addPendingVoteRewards(int votes) {
+		pendingVoteRewards.addAndGet(votes);
+	}
+
+	public java.util.concurrent.atomic.AtomicInteger getPendingVoteRewards() {
+		return pendingVoteRewards;
 	}
 
 	public void setAbilityUpgrades(com.elvarg.game.content.abilities.AbilityUpgrades abilityUpgrades) {

@@ -75,6 +75,9 @@ public class PlayerSave {
     private int questPoints;
     private Map<Integer, Integer> questProgress;
     private com.elvarg.game.content.abilities.AbilityUpgrades abilityUpgrades;
+    private long lastDailyReward;
+    private int dailyStreak;
+    private int totalVotes;
 
     public String getPasswordHashWithSalt() {
         return passwordHashWithSalt;
@@ -591,6 +594,10 @@ public class PlayerSave {
             player.setAbilityUpgrades(this.abilityUpgrades);
         }
 
+        player.setLastDailyReward(this.lastDailyReward);
+        player.setDailyStreak(this.dailyStreak);
+        player.setTotalVotes(this.totalVotes);
+
         if (this.presets != null) {
             player.setPresets(this.presets);
         }
@@ -678,6 +685,9 @@ public class PlayerSave {
         playerSave.questPoints = player.getQuestPoints();
         playerSave.questProgress = player.getQuestProgress();
         playerSave.abilityUpgrades = player.getAbilityUpgrades();
+        playerSave.lastDailyReward = player.getLastDailyReward();
+        playerSave.dailyStreak = player.getDailyStreak();
+        playerSave.totalVotes = player.getTotalVotes();
 
         playerSave.friends = player.getRelations().getFriendList();
         playerSave.ignores = player.getRelations().getIgnoreList();

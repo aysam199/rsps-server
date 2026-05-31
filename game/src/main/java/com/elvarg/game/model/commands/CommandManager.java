@@ -33,6 +33,7 @@ public class CommandManager {
         put(new GroundItemCommand(), "ground");
         put(new Store(), "store", "donate");
         put(new MaxHit(), "maxhit", "mh");
+        put(new Vote(), "vote");
 
         /**
          * Donators Command
