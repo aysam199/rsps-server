@@ -77,6 +77,9 @@ public class PacketConstants {
 	public static final int ITEM_ON_NPC = 57, ITEM_ON_ITEM = 53, ITEM_ON_OBJECT = 192, ITEM_ON_GROUND_ITEM = 25,
 			ITEM_ON_PLAYER = 14;
 
+	/** Custom: use an item on a map tile (ground-targeted abilities, e.g. Dash). */
+	public static final int ITEM_ON_TILE_OPCODE = 100;
+
 	static {
 		PACKETS[TELEPORT_OPCODE] = new TeleportPacketListener();
 		PACKETS[SPECIAL_ATTACK_OPCODE] = new SpecialAttackPacketListener();
@@ -145,6 +148,7 @@ public class PacketConstants {
 		PACKETS[ITEM_ON_OBJECT] = new UseItemPacketListener();
 		PACKETS[ITEM_ON_GROUND_ITEM] = new UseItemPacketListener();
 		PACKETS[ITEM_ON_PLAYER] = new UseItemPacketListener();
+		PACKETS[ITEM_ON_TILE_OPCODE] = new UseItemOnTilePacketListener();
 
 		PACKETS[ADD_FRIEND_OPCODE] = new PlayerRelationPacketListener();
 		PACKETS[REMOVE_FRIEND_OPCODE] = new PlayerRelationPacketListener();

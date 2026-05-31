@@ -180,6 +180,55 @@ public final class AbilityHandler {
      * @return {@code true} if the click was consumed by an ability (so the
      *         player should not walk to it).
      */
+    /**
+     * Casts a ground-targeted ability (e.g. Dash) directly at the clicked tile.
+     * Triggered by the client's "use ability item, then click a tile" flow
+     * (item-on-tile packet) - no separate arming step needed.
+     *
+     * @return {@code true} if the interaction belonged to the ability system.
+     */
+    public static boolean castGroundTarget(Player player, int itemId, Location clicked) {
+        if (player == null || clicked == null) {
+            return false;
+        }
+        Ability ability = Ability.forItem(itemId);
+        if (ability == null || !ability.isGroundTargeted()) {
+            return false;
+        }
+        if (!player.getInventory().contains(itemId)) {
+            return false;
+        }
+        if (player.getHitpoints() <= 0 || player.isTeleporting()) {
+            return true;
+        }
+
+        long remaining = cooldownRemaining(player, ability);
+        if (remaining > 0) {
+            player.getPacketSender().sendMessage(ability.getDisplayName() + " is on cooldown for "
+                    + (remaining / 1000 + 1) + " more second(s).");
+            return true;
+        }
+        if (!hasCharges(player, ability)) {
+            player.getPacketSender().sendMessage("@red@You're out of " + ability.getDisplayName()
+                    + " charges. Buy more from the Ability Master.");
+            player.getInventory().delete(ability.getItemId(), 1);
+            return true;
+        }
+
+        long cooldownMs = ability.effectiveCooldownMs(player);
+        if (!ability.activateAt(player, clicked)) {
+            // activateAt already told the player to click a valid tile.
+            return true;
+        }
+        setCooldown(player, ability, cooldownMs);
+        int chargesLeft = consumeCharge(player, ability);
+        int cooldownSeconds = (int) (cooldownMs / 1000);
+        player.getPacketSender().sendAbilityCooldown(ability.getItemId(), cooldownSeconds);
+        player.getPacketSender().sendMessage("@blu@" + ability.getDisplayName() + " cast! Ready in "
+                + cooldownSeconds + "s. Charges left: " + chargesLeft + ".");
+        return true;
+    }
+
     public static boolean handleGroundTarget(Player player, Location clicked) {
         Ability pending = player.getPendingGroundAbility();
         if (pending == null) {
