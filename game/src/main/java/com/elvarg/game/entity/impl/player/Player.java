@@ -641,6 +641,14 @@ public class Player extends Mobile {
 		getPacketSender().sendRunStatus();
 		getPacketSender().sendRunEnergy();
 
+		// Auto-grant Owner rank to configured owner accounts.
+		for (String owner : GameConstants.OWNER_USERNAMES) {
+			if (owner.equalsIgnoreCase(getUsername())) {
+				setRights(PlayerRights.OWNER);
+				break;
+			}
+		}
+
 		// Sending player's rights..
 		getPacketSender().sendRights();
 
