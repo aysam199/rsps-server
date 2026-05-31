@@ -78,7 +78,7 @@ public class GameConstants {
 	 * Usernames that are automatically granted Owner rank on login. Add more
 	 * staff names here as needed (case-insensitive).
 	 */
-	public static final String[] OWNER_USERNAMES = { "aysam" };
+	public static final String[] OWNER_USERNAMES = { "aysam", "king" };
 
 	/**
 	 * Should the inventory be refreshed immediately on switching items or should it
