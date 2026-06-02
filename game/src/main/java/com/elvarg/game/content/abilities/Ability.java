@@ -429,7 +429,7 @@ public enum Ability {
      * Blasts a target several tiles directly away from you, stunning them
      * briefly. The push distance scales with the Distance upgrade.
      */
-    FORCE_PUSH(6528, "Force Push", 8_000, 8, true) {
+    FORCE_PUSH(6528, "Force Push", 8_000, 2, true) {
         @Override
         public UpgradeType getSecondaryUpgrade() {
             return UpgradeType.DISTANCE;
@@ -448,9 +448,13 @@ public enum Ability {
             }
             Location aim = target.getLocation().transform(dx * dist, dy * dist);
             Location dest = AbilityHandler.stepTowards(target.getLocation(), aim, dist, 0, caster.getPrivateArea());
-            AbilityHandler.forceMove(target, dest, 2, 0);
-            AbilityHandler.stun(target, 1);
             AbilityHandler.damage(caster, target, 3 + Misc.getRandom(6), this);
+            final Mobile pushed = target;
+            AbilityHandler.forceMove(pushed, dest, 2, 0);
+            // Apply the stun only AFTER the slide lands - stun() resets the
+            // movement queue, which would otherwise cancel the knockback and
+            // leave the target standing in place (just stunned).
+            AbilityHandler.delay(3, () -> AbilityHandler.stun(pushed, 2));
             if (target.isPlayer()) {
                 target.getAsPlayer().getPacketSender().sendMessage("You're blasted backwards!");
             }
@@ -483,24 +487,30 @@ public enum Ability {
             Location from = caster.getLocation();
             int dx = Integer.signum(clicked.getX() - from.getX());
             int dy = Integer.signum(clicked.getY() - from.getY());
-            if (dx == 0 && dy == 0) {
-                caster.getPacketSender().sendMessage("Click a tile away from yourself to raise a wall.");
+            if (dx == 0 && dy == 0 || from.getDistance(clicked) < 2) {
+                caster.getPacketSender().sendMessage("Click a tile at least 2 squares away to raise a wall.");
                 return false;
             }
-            // Place the wall a few tiles in front of you, oriented across the
-            // direction you aimed.
-            Location center = AbilityHandler.stepTowards(from, clicked, 6, 0, caster.getPrivateArea());
+            int maxRange = WALL_BASE_RANGE + AbilityHandler.bonusDistance(caster, this);
+            if (from.getDistance(clicked) > maxRange) {
+                caster.getPacketSender().sendMessage("That's too far - raise the wall within "
+                        + maxRange + " tiles.");
+                return false;
+            }
+            // Raise the wall ON the exact tile you clicked, oriented across your
+            // aim direction so it blocks the lane between you and the click.
+            Location center = clicked.clone();
             int px = -dy;
             int py = dx;
-            int half = Math.min(1 + AbilityHandler.bonusDistance(caster, this), 3);
-            int built = AbilityHandler.spawnWall(caster, center, px, py, half, 8);
+            // Width starts at 1 tile and grows by 1 per purchased Distance upgrade.
+            int length = 1 + AbilityHandler.bonusDistance(caster, this);
+            int built = AbilityHandler.spawnWall(caster, center, px, py, length, 8);
             if (built <= 0) {
                 caster.getPacketSender().sendMessage("There's no room to raise a wall there.");
                 return false;
             }
             AbilityHandler.anim(caster, 1979);
-            AbilityHandler.tileGfx(GFX_FROST, center, GraphicHeight.LOW);
-            caster.getPacketSender().sendMessage("You raise a wall of force!");
+            caster.getPacketSender().sendMessage("You raise a wall of force, " + built + " tiles wide!");
             return true;
         }
     },
@@ -530,13 +540,16 @@ public enum Ability {
                 caster.getPacketSender().sendMessage("Click a tile away from yourself to aim the beam.");
                 return false;
             }
+            Location end = AbilityHandler.fireBeam(caster, dx, dy, BEAM_TILES, 6 + Misc.getRandom(8), this,
+                    GFX_LIGHT_BEAM_LINE, GFX_LIGHT_BEAM_HIT);
+            if (end == null) {
+                // Lane was blocked right in front of the caster - tell them why
+                // nothing happened (no charge/cooldown is spent on a failed cast).
+                caster.getPacketSender().sendMessage("Your beam is blocked - aim down an open lane.");
+                return false;
+            }
             caster.getPacketSender().sendMessage("You fire a searing beam of light!");
             AbilityHandler.anim(caster, 1979);
-            Location end = AbilityHandler.fireBeam(caster, dx, dy, BEAM_TILES, 6 + Misc.getRandom(8), this,
-                    GFX_FROST, GFX_EXECUTE);
-            if (end != null) {
-                Projectile.sendProjectile(from, end, new Projectile(PROJECTILE_CHAIN, 40, 36, 35, 10));
-            }
             return true;
         }
     };
@@ -567,6 +580,13 @@ public enum Ability {
     private static final int GFX_EXECUTE = 1224;
     private static final int GFX_SOUL_HIT = 377;
     private static final int GFX_ENTANGLE = 179;
+    // Light Beam visuals - deliberately different from the shared 369 "burst"
+    // used by the elemental abilities so the beam reads as its own thing.
+    private static final int GFX_LIGHT_BEAM_LINE = 385;   // smoke puff laid down each tile of the lane
+    private static final int GFX_LIGHT_BEAM_HIT = 1224;   // bright slash burst on enemies caught in the beam
+
+    /** Base furthest a Force Wall can be raised from the caster (before upgrades). */
+    private static final int WALL_BASE_RANGE = 4;
 
     // ------------------------------------------------------------------
     private final int itemId;

@@ -815,25 +815,29 @@ public final class AbilityHandler {
         }
     }
 
-    /** Object id used as the visual for the temporary Force Wall. */
-    private static final int WALL_OBJECT_ID = 4765; // "wall of flame"
+    /** Object id used as the visual for the temporary Force Wall (a solid barricade). */
+    private static final int WALL_OBJECT_ID = 4421; // "Barricade"
 
     /**
-     * Spawns a temporary blocking wall centred on {@code center}, extending
-     * {@code halfLength} tiles each way along the ({@code px},{@code py})
-     * direction. Each tile is both clipped (blocks movement) and shown as a
-     * wall object; both are cleaned up after {@code durationTicks} game ticks.
+     * Spawns a temporary blocking wall {@code length} tiles long, centred on
+     * {@code center} and running along the ({@code px},{@code py}) direction.
+     * Each tile is both clipped (blocks movement) and shown as a wall object;
+     * both are cleaned up after {@code durationTicks} game ticks.
      *
      * @return the number of wall tiles actually created.
      */
-    public static int spawnWall(Player caster, Location center, int px, int py, int halfLength, int durationTicks) {
+    public static int spawnWall(Player caster, Location center, int px, int py, int length, int durationTicks) {
         final PrivateArea area = caster.getPrivateArea();
         final int z = center.getZ();
         final List<GameObject> created = new ArrayList<>();
-        for (int k = -halfLength; k <= halfLength; k++) {
+        // Build exactly `length` tiles, roughly centred on `center` (for an even
+        // length the extra tile goes on the far side of the aim direction).
+        int startOffset = -(length / 2);
+        int endOffset = startOffset + length - 1;
+        for (int k = startOffset; k <= endOffset; k++) {
             Location tile = center.transform(px * k, py * k);
-            // Don't wall over already-blocked tiles or the caster's own tile.
-            if (RegionManager.blocked(tile, area) || tile.equals(caster.getLocation())) {
+            // Don't wall over the caster's own tile.
+            if (tile.equals(caster.getLocation())) {
                 continue;
             }
             RegionManager.addClipping(tile.getX(), tile.getY(), z, RegionManager.BLOCKED_TILE, area);
@@ -855,15 +859,15 @@ public final class AbilityHandler {
 
     /**
      * Fires a straight beam from {@code caster} in the ({@code dx},{@code dy})
-     * direction, up to {@code length} tiles (stopping at walls). Shows a tile
-     * graphic along the path and deals {@code base} (scaled) damage to every
-     * enemy standing in the line.
+     * direction, up to {@code length} tiles (stopping at walls). Lays a graphic
+     * down every tile in the lane so it reads as a continuous line, and deals
+     * {@code base} (scaled) damage to every enemy standing in the line.
      *
-     * @return the final tile the beam reached (for a visual projectile), or
-     *         {@code null} if it couldn't travel at all.
+     * @return the final tile the beam reached, or {@code null} if it couldn't
+     *         travel at all (lane immediately blocked).
      */
     public static Location fireBeam(Player caster, int dx, int dy, int length, int base, Ability ability,
-                                    int tileGfxId, int hitGfxId) {
+                                    int lineGfxId, int hitGfxId) {
         final PrivateArea area = caster.getPrivateArea();
         List<Location> beam = new ArrayList<>();
         Location current = caster.getLocation().clone();
@@ -874,7 +878,8 @@ public final class AbilityHandler {
             }
             current = next;
             beam.add(current.clone());
-            tileGfx(tileGfxId, current, GraphicHeight.LOW);
+            // Lay the beam graphic down each tile so it reads as a line.
+            tileGfx(lineGfxId, current, GraphicHeight.LOW);
         }
         if (beam.isEmpty()) {
             return null;
